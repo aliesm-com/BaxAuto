@@ -1,7 +1,7 @@
 from django import forms
 from django.contrib import admin
 
-from .models import DatabaseConnection
+from .models import DatabaseConnection, DatabaseConnectionShare
 
 
 class DatabaseConnectionAdminForm(forms.ModelForm):
@@ -25,6 +25,12 @@ class DatabaseConnectionAdminForm(forms.ModelForm):
         return instance
 
 
+class DatabaseConnectionShareInline(admin.TabularInline):
+    model = DatabaseConnectionShare
+    extra = 0
+    raw_id_fields = ('user',)
+
+
 @admin.register(DatabaseConnection)
 class DatabaseConnectionAdmin(admin.ModelAdmin):
     form = DatabaseConnectionAdminForm
@@ -33,3 +39,4 @@ class DatabaseConnectionAdmin(admin.ModelAdmin):
     search_fields = ('name', 'host', 'user__username', 'database_name')
     raw_id_fields = ('user',)
     readonly_fields = ('created_at', 'updated_at')
+    inlines = (DatabaseConnectionShareInline,)

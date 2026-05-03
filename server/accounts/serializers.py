@@ -20,7 +20,6 @@ class UserPublicSerializer(serializers.ModelSerializer):
             'first_name',
             'last_name',
             'is_active',
-            'is_staff',
             'is_superuser',
             'is_viewer',
             'is_editor',
@@ -43,6 +42,8 @@ class AdminUserSerializer(serializers.ModelSerializer):
     """Create/update users (admin API). Password optional on update."""
 
     password = serializers.CharField(write_only=True, required=False, min_length=8)
+    is_staff = serializers.BooleanField(read_only=True)
+    is_superuser = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = User
@@ -62,7 +63,7 @@ class AdminUserSerializer(serializers.ModelSerializer):
             'country_code',
             'password',
         )
-        read_only_fields = ('id',)
+        read_only_fields = ('id', 'is_staff', 'is_superuser')
 
     def validate(self, attrs):
         if self.instance is None and not attrs.get('password'):
@@ -101,6 +102,7 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     @classmethod
     def get_token(cls, user):
         token = super().get_token(user)
+        token['is_superuser'] = bool(user.is_superuser)
         token['is_viewer'] = bool(user.is_viewer)
         token['is_editor'] = bool(user.is_editor)
         token['is_admin'] = bool(user.is_admin)

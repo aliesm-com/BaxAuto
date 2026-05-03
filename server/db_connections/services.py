@@ -38,6 +38,7 @@ def perform_backup(
     connection: DatabaseConnection,
     *,
     trigger: str | None = None,
+    initiated_by=None,
 ) -> tuple[Path, str]:
     """
     Run logical backup for this saved connection; write under ``MEDIA_ROOT/db_exports/<user_id>/``.
@@ -49,6 +50,8 @@ def perform_backup(
     if trigger is None:
         trigger = BackupRecord.Trigger.MANUAL
 
+    actor = initiated_by if initiated_by is not None else connection.user
+
     params = connection_to_params(connection)
     engine = connection.engine
 
@@ -59,7 +62,7 @@ def perform_backup(
 
     record = BackupRecord.objects.create(
         connection=connection,
-        initiated_by=connection.user,
+        initiated_by=actor,
         trigger=trigger,
         status=BackupRecord.Status.IN_PROGRESS,
         engine=engine,

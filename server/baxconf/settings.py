@@ -37,6 +37,13 @@ SECRET_KEY = env(
 # Fernet key for db_connections.DatabaseConnection.password (see .env.example).
 DB_CREDENTIALS_FERNET_KEY = env.str('DB_CREDENTIALS_FERNET_KEY', default='').strip()
 
+# Overview dashboard: quota for storage progress bar (bytes). Default 1 TiB.
+OVERVIEW_STORAGE_QUOTA_BYTES = env.int('OVERVIEW_STORAGE_QUOTA_BYTES', default=1024**4)
+
+# Optional: show worker count in dashboard health (omit env var to hide).
+_overview_workers = env.str('OVERVIEW_WORKERS_COUNT', default='').strip()
+OVERVIEW_WORKERS_COUNT = int(_overview_workers) if _overview_workers.isdigit() else None
+
 DEBUG = env('DEBUG', default=True)
 
 ALLOWED_HOSTS = env.list(
@@ -52,6 +59,8 @@ INSTALLED_APPS = [
     'db_connections',
     'backups',
     'scheduler',
+    'storage',
+    'overview',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',

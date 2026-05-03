@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+from django.db.models import Q
 from django.http import FileResponse
 from drf_spectacular.utils import extend_schema
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+
+from accounts.permissions import ViewerCannotMutate
+from db_connections.access import connection_access_role
 
 from .services import perform_restore, resolved_backup_file
 from dbs.base import BackupRestoreError
@@ -22,11 +26,13 @@ class BackupRecordViewSet(viewsets.ReadOnlyModelViewSet):
     """List backup history, download artifacts, and trigger restores."""
 
     serializer_class = BackupRecordSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, ViewerCannotMutate]
 
     def get_queryset(self):
+        u = self.request.user
         return (
-            BackupRecord.objects.filter(connection__user=self.request.user)
+            BackupRecord.objects.filter(Q(connection__user=u) | Q(connection__shares__user=u))
+            .distinct()
             .select_related('connection')
             .prefetch_related('restore_logs')
         )
@@ -53,6 +59,11 @@ class BackupRecordViewSet(viewsets.ReadOnlyModelViewSet):
     @action(detail=True, methods=['post'])
     def restore(self, request, pk=None):
         backup = self.get_object()
+        if connection_access_role(request.user, backup.connection) == 'viewer':
+            return Response(
+                {'detail': 'Viewers cannot run restores on shared connections.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         ser = RestoreRequestSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
         kw = {k: v for k, v in ser.validated_data.items()}
@@ -67,11 +78,12 @@ class RestoreRecordViewSet(viewsets.ReadOnlyModelViewSet):
     """Restore attempt history for the current user's connections."""
 
     serializer_class = RestoreRecordSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, ViewerCannotMutate]
 
     def get_queryset(self):
-        return RestoreRecord.objects.filter(connection__user=self.request.user).select_related(
-            'backup',
-            'connection',
-            'initiated_by',
+        u = self.request.user
+        return (
+            RestoreRecord.objects.filter(Q(connection__user=u) | Q(connection__shares__user=u))
+            .distinct()
+            .select_related('backup', 'connection', 'initiated_by')
         )

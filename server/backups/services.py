@@ -26,6 +26,46 @@ def resolved_backup_file(backup: BackupRecord) -> Path:
     return candidate
 
 
+def backup_artifact_bytes_on_disk_or_record(
+    *,
+    relative_media_path: str,
+    size_bytes: int | None,
+) -> int:
+    """
+    Bytes to count toward dashboard storage.
+
+    Prefer the current file size on disk when the artifact exists under MEDIA_ROOT;
+    otherwise fall back to the persisted ``size_bytes`` (e.g. missing file or legacy rows).
+    """
+    rel = (relative_media_path or '').strip()
+    if rel:
+        try:
+            media_root = Path(settings.MEDIA_ROOT).resolve()
+            candidate = (media_root / rel).resolve()
+            if candidate.is_relative_to(media_root) and candidate.is_file():
+                return candidate.stat().st_size
+        except OSError:
+            pass
+    return int(size_bytes or 0)
+
+
+def total_success_backup_storage_bytes(qs) -> int:
+    """Sum storage contributions for successful backups in queryset ``qs``."""
+    rows = (
+        qs.filter(status=BackupRecord.Status.SUCCESS)
+        .select_related(None)
+        .only('relative_media_path', 'size_bytes')
+        .iterator(chunk_size=256)
+    )
+    return sum(
+        backup_artifact_bytes_on_disk_or_record(
+            relative_media_path=b.relative_media_path,
+            size_bytes=b.size_bytes,
+        )
+        for b in rows
+    )
+
+
 def perform_restore(
     *,
     backup: BackupRecord,

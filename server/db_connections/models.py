@@ -103,3 +103,34 @@ class DatabaseConnection(models.Model):
                 )
         elif not host:
             raise ValidationError({'host': 'Host is required for this engine.'})
+
+
+class DatabaseConnectionShare(models.Model):
+    """Grant another user read-only or edit access to someone else's saved connection."""
+
+    class Role(models.TextChoices):
+        VIEWER = 'viewer', 'Viewer'
+        EDITOR = 'editor', 'Editor'
+
+    connection = models.ForeignKey(
+        DatabaseConnection,
+        on_delete=models.CASCADE,
+        related_name='shares',
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='database_connection_shares',
+    )
+    role = models.CharField(max_length=16, choices=Role.choices, default=Role.VIEWER)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=('connection', 'user'),
+                name='db_connections_share_unique_member',
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f'{self.connection_id} → {self.user_id} ({self.role})'

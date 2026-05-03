@@ -1,6 +1,10 @@
+from django.contrib.auth import get_user_model
 from rest_framework import serializers
 
-from .models import DatabaseConnection
+from .access import connection_access_role
+from .models import DatabaseConnection, DatabaseConnectionShare
+
+User = get_user_model()
 
 
 class DatabaseConnectionSerializer(serializers.ModelSerializer):
@@ -10,12 +14,16 @@ class DatabaseConnectionSerializer(serializers.ModelSerializer):
         allow_blank=True,
         style={'input_type': 'password'},
     )
+    owner_username = serializers.CharField(source='user.username', read_only=True)
+    access_role = serializers.SerializerMethodField()
 
     class Meta:
         model = DatabaseConnection
         fields = [
             'id',
             'user',
+            'owner_username',
+            'access_role',
             'name',
             'engine',
             'host',
@@ -30,7 +38,26 @@ class DatabaseConnectionSerializer(serializers.ModelSerializer):
             'created_at',
             'updated_at',
         ]
-        read_only_fields = ('user', 'created_at', 'updated_at')
+        read_only_fields = ('user', 'owner_username', 'access_role', 'created_at', 'updated_at')
+
+    def get_access_role(self, obj: DatabaseConnection) -> str | None:
+        request = self.context.get('request')
+        if not request or not request.user.is_authenticated:
+            return None
+        return connection_access_role(request.user, obj)
+
+
+class ConnectionShareReadSerializer(serializers.ModelSerializer):
+    username = serializers.CharField(source='user.username', read_only=True)
+
+    class Meta:
+        model = DatabaseConnectionShare
+        fields = ['user', 'username', 'role']
+
+
+class ConnectionShareWriteSerializer(serializers.Serializer):
+    user = serializers.PrimaryKeyRelatedField(queryset=User.objects.filter(is_active=True))
+    role = serializers.ChoiceField(choices=DatabaseConnectionShare.Role.choices, default=DatabaseConnectionShare.Role.VIEWER)
 
     def create(self, validated_data):
         pwd = validated_data.pop('password', '')
