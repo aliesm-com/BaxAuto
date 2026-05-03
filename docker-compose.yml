@@ -1,0 +1,15 @@
+# BaxAuto — API image bundles DB client tools so backups work without installing pg_dump on Windows.
+services:
+  api:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    ports:
+      - '8000:8000'
+    env_file:
+      - ./server/.env
+    volumes:
+      - ./server:/app
+    command: >
+      sh -c "python manage.py migrate --noinput &&
+             python manage.py runserver 0.0.0.0:8000"
