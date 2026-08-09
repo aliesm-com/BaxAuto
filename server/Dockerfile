@@ -9,7 +9,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# PostgreSQL, MySQL clients, Redis CLI, Microsoft ODBC + sqlcmd, unzip/libicu for SqlPackage.
+# PostgreSQL (PGDG client ≥ server), MySQL, Redis CLI, Microsoft ODBC + sqlcmd, unzip/libicu for SqlPackage.
+ARG PG_CLIENT_MAJOR=16
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
        curl \
@@ -18,14 +19,18 @@ RUN apt-get update \
        apt-transport-https \
        unzip \
        libicu72 \
-       postgresql-client \
        default-mysql-client \
        redis-tools \
+    && curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+       | gpg --dearmor -o /usr/share/keyrings/postgresql.gpg \
+    && echo "deb [signed-by=/usr/share/keyrings/postgresql.gpg] http://apt.postgresql.org/pub/repos/apt bookworm-pgdg main" \
+       > /etc/apt/sources.list.d/pgdg.list \
     && curl -fsSL https://packages.microsoft.com/keys/microsoft.asc \
        | gpg --dearmor -o /usr/share/keyrings/microsoft-prod.gpg \
     && curl -fsSL https://packages.microsoft.com/config/debian/12/prod.list \
        > /etc/apt/sources.list.d/microsoft-prod.list \
     && apt-get update \
+    && apt-get install -y --no-install-recommends "postgresql-client-${PG_CLIENT_MAJOR}" \
     && ACCEPT_EULA=Y apt-get install -y --no-install-recommends \
        msodbcsql18 \
        mssql-tools18 \
@@ -34,7 +39,7 @@ RUN apt-get update \
 ENV PATH="${PATH}:/opt/mssql-tools18/bin"
 
 # Microsoft SqlPackage (.bacpac export/import for SQL Server).
-ARG SQLPACKAGE_URL=https://aka.ms/sqlpackage-linux-x64
+ARG SQLPACKAGE_URL=https://aka.ms/sqlpackage-linux
 RUN curl -fSL "$SQLPACKAGE_URL" -o /tmp/sp.zip \
     && unzip -q /tmp/sp.zip -d /opt/sqlpackage-root \
     && SP_BIN="$(find /opt/sqlpackage-root -type f -name sqlpackage | head -1)" \
@@ -45,18 +50,19 @@ RUN curl -fSL "$SQLPACKAGE_URL" -o /tmp/sp.zip \
     && sqlpackage /version
 
 # MongoDB Database Tools (mongodump / mongorestore).
-ARG MONGO_TOOLS_VERSION=100.9.10
+# Debian 12 has no arm64 build; use Ubuntu 22.04 arm64 package there.
+ARG MONGO_TOOLS_VERSION=100.17.0
 RUN set -eux \
     && ARCH="$(dpkg --print-architecture)" \
     && case "$ARCH" in \
-         amd64) MARCH=x86_64 ;; \
-         arm64) MARCH=aarch64 ;; \
+         amd64) PLATFORM=debian12-x86_64 ;; \
+         arm64) PLATFORM=ubuntu2204-arm64 ;; \
          *) echo "unsupported arch for MongoDB tools: $ARCH"; exit 1 ;; \
        esac \
     && cd /tmp \
-    && curl -fsSL "https://fastdl.mongodb.org/tools/db/mongodb-database-tools-debian12-${MARCH}-${MONGO_TOOLS_VERSION}.tgz" \
+    && curl -fsSL "https://fastdl.mongodb.org/tools/db/mongodb-database-tools-${PLATFORM}-${MONGO_TOOLS_VERSION}.tgz" \
        | tar xz \
-    && mv mongodb-database-tools-debian12-*/bin/* /usr/local/bin/ \
+    && mv mongodb-database-tools-*/bin/* /usr/local/bin/ \
     && rm -rf mongodb-database-tools-* \
     && mongodump --version
 
