@@ -25,12 +25,19 @@ from dbs.base import (
 class Backend(DatabaseBackend):
     engine: ClassVar[str] = 'postgresql'
 
+    def _sslmode(self, params: Mapping[str, Any]) -> str:
+        # libpq default is ``prefer`` (try TLS first). Servers without SSL often
+        # drop that handshake, which pg_dump reports as "server closed the connection".
+        return 'require' if params.get('use_tls') else 'disable'
+
     def _pg_env(self, password: str | None, params: Mapping[str, Any]) -> dict[str, str]:
-        env: dict[str, str] = {}
+        env: dict[str, str] = {
+            'PGSSLMODE': self._sslmode(params),
+            # Remote COPY of large tables can idle long enough for NAT/firewalls to drop the socket.
+            'PGOPTIONS': '-c statement_timeout=0 -c idle_in_transaction_session_timeout=0',
+        }
         if password:
             env['PGPASSWORD'] = password
-        if params.get('use_tls'):
-            env.setdefault('PGSSLMODE', 'require')
         return env
 
     def _connection_args(self, params: Mapping[str, Any]) -> list[str]:
@@ -40,7 +47,13 @@ class Backend(DatabaseBackend):
         db = params.get('database_name')
         if not db:
             raise BackupRestoreError('database_name is required for PostgreSQL.')
-        return ['-h', str(host), '-p', str(port), '-U', str(user), '-d', str(db)]
+        sslmode = self._sslmode(params)
+        conninfo = (
+            f'host={host} port={port} dbname={db} user={user} sslmode={sslmode} '
+            'keepalives=1 keepalives_idle=30 keepalives_interval=10 keepalives_count=5 '
+            'connect_timeout=15'
+        )
+        return ['-d', conninfo]
 
     def test_connection(self, params: Mapping[str, Any]) -> None:
         host = str(params.get('host') or 'localhost')
@@ -70,8 +83,7 @@ class Backend(DatabaseBackend):
             password=params.get('password') or None,
             connect_timeout=8,
         )
-        if params.get('use_tls'):
-            kw['sslmode'] = 'require'
+        kw['sslmode'] = self._sslmode(params)
         try:
             conn = psycopg2.connect(**kw)
             conn.close()
@@ -90,8 +102,26 @@ class Backend(DatabaseBackend):
             '-f',
             str(dest),
         ]
-        run_cmd(cmd, env=self._pg_env(pwd, params))
-        return dest
+        attempts = 3
+        last_err: BackupRestoreError | None = None
+        for i in range(attempts):
+            if dest.exists():
+                dest.unlink()
+            try:
+                run_cmd(cmd, env=self._pg_env(pwd, params))
+                return dest
+            except BackupRestoreError as e:
+                last_err = e
+                msg = str(e).lower()
+                transient = (
+                    'server closed the connection' in msg
+                    or 'pqgetcopydata' in msg
+                    or 'connection reset' in msg
+                    or 'timeout' in msg
+                )
+                if not transient or i == attempts - 1:
+                    raise
+        raise last_err or BackupRestoreError('pg_dump failed.')
 
     def restore(
         self,
