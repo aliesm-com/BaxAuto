@@ -118,6 +118,9 @@ _sqlite_default_url = 'sqlite:///' + os.path.join(str(BASE_DIR), 'db.sqlite3').r
     '\\', '/'
 )
 DATABASES = {'default': env.db('DATABASE_URL', default=_sqlite_default_url)}
+if DATABASES['default'].get('ENGINE', '').endswith('sqlite3'):
+    DATABASES['default'].setdefault('OPTIONS', {})
+    DATABASES['default']['OPTIONS'].setdefault('timeout', 60)
 
 
 # Password validation
