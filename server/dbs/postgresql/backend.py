@@ -35,6 +35,7 @@ class Backend(DatabaseBackend):
             'PGSSLMODE': self._sslmode(params),
             # Remote COPY of large tables can idle long enough for NAT/firewalls to drop the socket.
             'PGOPTIONS': '-c statement_timeout=0 -c idle_in_transaction_session_timeout=0',
+            'PGCONNECT_TIMEOUT': '60',
         }
         if password:
             env['PGPASSWORD'] = password
@@ -51,7 +52,7 @@ class Backend(DatabaseBackend):
         conninfo = (
             f'host={host} port={port} dbname={db} user={user} sslmode={sslmode} '
             'keepalives=1 keepalives_idle=30 keepalives_interval=10 keepalives_count=5 '
-            'connect_timeout=15'
+            'connect_timeout=60'
         )
         return ['-d', conninfo]
 
@@ -136,8 +137,10 @@ class Backend(DatabaseBackend):
             raise BackupRestoreError(f'Backup file not found: {src}')
         pwd = (params.get('password') or '') or None
         pg_restore = require_executable('pg_restore')
+        # UI flags (drop / flush) map to --clean; extra engine-specific keys are ignored.
+        do_clean = bool(kwargs.get('drop', clean) or kwargs.get('flush_before_restore', False) or clean)
         cmd = [pg_restore, *self._connection_args(params)]
-        if clean:
+        if do_clean:
             cmd.extend(['--clean', '--if-exists'])
-        cmd.extend(['-v', str(src)])
+        cmd.extend(['--no-owner', '--no-acl', '-v', str(src)])
         run_cmd(cmd, env=self._pg_env(pwd, params))
