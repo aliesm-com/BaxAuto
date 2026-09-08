@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 
-import { Pencil, Plus, Trash2 } from 'lucide-react'
+import { Pencil, Plus, Trash2, Unplug } from 'lucide-react'
 
 import type { StorageDestinationDTO } from '@/api/storageDestinations'
-import { deleteStorageDestination, listStorageDestinations } from '@/api/storageDestinations'
+import { deleteStorageDestination, listStorageDestinations, testStorageDestination } from '@/api/storageDestinations'
 import { StorageFormModal } from '@/components/storage/StorageFormModal'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -24,6 +24,7 @@ export function StoragePage() {
   const [rows, setRows] = useState<StorageDestinationDTO[]>([])
   const [error, setError] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<number | null>(null)
+  const [testMsg, setTestMsg] = useState<string | null>(null)
   const [searchParams, setSearchParams] = useSearchParams()
 
   const { modalOpen, destinationId } = useMemo(() => {
@@ -77,6 +78,20 @@ export function StoragePage() {
     refresh()
   }, [refresh])
 
+  async function onTest(row: StorageDestinationDTO) {
+    setBusyId(row.id)
+    setError(null)
+    setTestMsg(null)
+    try {
+      await testStorageDestination(row.id)
+      setTestMsg(`Connected to “${row.name}”.`)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Test failed')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
   async function onDelete(row: StorageDestinationDTO) {
     if (!window.confirm(`Delete storage “${row.name}”?`)) return
     setBusyId(row.id)
@@ -116,6 +131,7 @@ export function StoragePage() {
       </div>
 
       {error ? <p className="text-sm text-red-600">{error}</p> : null}
+      {testMsg ? <p className="text-sm text-emerald-700">{testMsg}</p> : null}
 
       <Card>
         <CardHeader>
@@ -129,7 +145,7 @@ export function StoragePage() {
                 <th className="pb-3 pr-4 font-medium">Name</th>
                 <th className="pb-3 pr-4 font-medium">Type</th>
                 <th className="pb-3 pr-4 font-medium">Target</th>
-                <th className="pb-3 font-medium w-32 text-right">Actions</th>
+                <th className="pb-3 font-medium w-40 text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -144,6 +160,18 @@ export function StoragePage() {
                   <td className="py-3 pr-4 text-muted-foreground">{summary(r)}</td>
                   <td className="py-3 text-right">
                     <div className="flex justify-end gap-1">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="size-8"
+                        disabled={busyId === r.id}
+                        title="Test connection"
+                        onClick={() => void onTest(r)}
+                      >
+                        <Unplug className="size-4" />
+                        <span className="sr-only">Test</span>
+                      </Button>
                       <Button type="button" variant="ghost" size="icon" className="size-8" onClick={() => openEditModal(r.id)}>
                         <Pencil className="size-4" />
                         <span className="sr-only">Edit</span>

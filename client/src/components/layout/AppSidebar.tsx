@@ -42,7 +42,7 @@ const mainNav: NavDef[] = [
 ]
 
 const advancedNav: NavDef[] = [
-  { to: '/logs', label: 'Activity Logs', icon: Activity, access: 'soon' },
+  { to: '/logs', label: 'Activity Logs', icon: Activity, access: 'auth' },
   { to: '/restore', label: 'Restore', icon: RotateCcw, access: 'mutate' },
   { to: '/users', label: 'Users', icon: Users, access: 'admin', hideWhenDenied: true },
 ]
