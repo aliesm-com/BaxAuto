@@ -116,6 +116,16 @@ def perform_backup(
                 'updated_at',
             ]
         )
+        from baxconf.alertlog import log_alert
+
+        kind = 'Scheduled backup' if trigger == BackupRecord.Trigger.SCHEDULED else 'Backup'
+        log_alert(
+            f'{kind} of “{connection.name}” completed ({filename}, {record.size_bytes} bytes).',
+            status='success',
+            source='backup',
+            connection_id=connection.pk,
+            backup_id=record.pk,
+        )
         return path, filename
     except Exception as e:
         record = BackupRecord.objects.get(pk=record_id)
@@ -123,6 +133,16 @@ def perform_backup(
         record.error_message = str(e)[:8000]
         record.finished_at = timezone.now()
         record.save(update_fields=['status', 'error_message', 'finished_at', 'updated_at'])
+        from baxconf.alertlog import log_alert
+
+        kind = 'Scheduled backup' if trigger == BackupRecord.Trigger.SCHEDULED else 'Backup'
+        log_alert(
+            f'{kind} of “{connection.name}” failed: {record.error_message}',
+            status='error',
+            source='backup',
+            connection_id=connection.pk,
+            backup_id=record_id,
+        )
         raise
 
 

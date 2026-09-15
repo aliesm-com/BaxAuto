@@ -8,6 +8,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from accounts.permissions import ViewerCannotMutate
+from baxconf.alertlog import log_alert, log_http_alert
 from dbs.base import BackupRestoreError
 
 from .access import connection_access_role, connections_visible_q
@@ -34,16 +35,40 @@ class DatabaseConnectionViewSet(viewsets.ModelViewSet):
             .select_related('user')
         )
 
+    def perform_create(self, serializer):
+        serializer.save()
+        conn = serializer.instance
+        log_alert(
+            f'Connection “{conn.name}” created ({conn.engine}).',
+            status='success',
+            source='connection',
+            connection_id=conn.pk,
+        )
+
     def perform_destroy(self, instance):
         if instance.user_id != self.request.user.pk:
             raise PermissionDenied('Only the connection owner can delete it.')
+        name, pk, engine = instance.name, instance.pk, instance.engine
         super().perform_destroy(instance)
+        log_alert(
+            f'Connection “{name}” deleted ({engine}).',
+            status='success',
+            source='connection',
+            connection_id=pk,
+        )
 
     def perform_update(self, serializer):
         role = connection_access_role(self.request.user, serializer.instance)
         if role not in ('owner', 'editor'):
             raise PermissionDenied('You do not have permission to edit this connection.')
         serializer.save()
+        conn = serializer.instance
+        log_alert(
+            f'Connection “{conn.name}” updated ({conn.engine}).',
+            status='success',
+            source='connection',
+            connection_id=conn.pk,
+        )
 
     def _require_not_viewer_share(self, connection):
         role = connection_access_role(self.request.user, connection)
@@ -57,10 +82,20 @@ class DatabaseConnectionViewSet(viewsets.ModelViewSet):
         self._require_not_viewer_share(conn)
         try:
             test_saved_connection(conn)
-        except BackupRestoreError as e:
+        except (BackupRestoreError, ValueError) as e:
+            log_http_alert(
+                f'Connection test for “{conn.name}” failed: {e}',
+                http_status=status.HTTP_400_BAD_REQUEST,
+                source='connection_test',
+                connection_id=conn.pk,
+            )
             return Response({'ok': False, 'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
-        except ValueError as e:
-            return Response({'ok': False, 'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        log_alert(
+            f'Connection test for “{conn.name}” succeeded.',
+            status='success',
+            source='connection_test',
+            connection_id=conn.pk,
+        )
         return Response({'ok': True})
 
     @extend_schema(request=None, responses={200: None})
@@ -102,6 +137,13 @@ class DatabaseConnectionViewSet(viewsets.ModelViewSet):
         except IntegrityError as e:
             raise ValidationError(str(e)) from e
         st = status.HTTP_201_CREATED if created else status.HTTP_200_OK
+        log_alert(
+            f'Share {"added" if created else "updated"} on “{conn.name}”: user {target.username} as {role}.',
+            status='success',
+            source='connection_share',
+            connection_id=conn.pk,
+            member_id=target.pk,
+        )
         return Response(ConnectionShareReadSerializer(share).data, status=st)
 
     @extend_schema(responses={204: None})
@@ -112,5 +154,19 @@ class DatabaseConnectionViewSet(viewsets.ModelViewSet):
             raise PermissionDenied('Only the owner can manage shares.')
         deleted, _ = DatabaseConnectionShare.objects.filter(connection=conn, user_id=int(member_id)).delete()
         if not deleted:
+            log_http_alert(
+                'Share not found.',
+                http_status=status.HTTP_404_NOT_FOUND,
+                source='connection_share',
+                connection_id=conn.pk,
+                member_id=member_id,
+            )
             return Response({'detail': 'Share not found.'}, status=status.HTTP_404_NOT_FOUND)
+        log_alert(
+            f'Share removed from “{conn.name}” (user_id={member_id}).',
+            status='success',
+            source='connection_share',
+            connection_id=conn.pk,
+            member_id=member_id,
+        )
         return Response(status=status.HTTP_204_NO_CONTENT)

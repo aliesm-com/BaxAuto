@@ -70,6 +70,15 @@ def _claim_due_job(job_id: int) -> tuple[ScheduledJob, dict[str, Any], Task | No
             job.last_run = claimed_at
             job.next_run = job.compute_next_run_after(claimed_at)
             job.save()
+            from baxconf.alertlog import log_alert
+
+            log_alert(
+                f'Scheduled job “{job.name}” failed: {job.last_error}',
+                status='error',
+                source='schedule',
+                job_id=job.pk,
+                task_key=job.task_key,
+            )
             return job, {}, None
 
         kwargs: dict[str, Any] = dict(job.payload or {})
@@ -80,15 +89,26 @@ def _claim_due_job(job_id: int) -> tuple[ScheduledJob, dict[str, Any], Task | No
             cid = kwargs.get('connection_id') or (job.payload or {}).get('connection_id')
             if cid:
                 stale_before = timezone.now() - timedelta(minutes=45)
-                BackupRecord.objects.filter(
+                stale_qs = BackupRecord.objects.filter(
                     connection_id=cid,
                     status=BackupRecord.Status.IN_PROGRESS,
                     created_at__lt=stale_before,
-                ).update(
-                    status=BackupRecord.Status.FAILED,
-                    error_message='Stale in-progress backup (interrupted).',
-                    finished_at=timezone.now(),
                 )
+                stale_ids = list(stale_qs.values_list('pk', flat=True))
+                if stale_ids:
+                    BackupRecord.objects.filter(pk__in=stale_ids).update(
+                        status=BackupRecord.Status.FAILED,
+                        error_message='Stale in-progress backup (interrupted).',
+                        finished_at=timezone.now(),
+                    )
+                    from baxconf.alertlog import log_alert
+
+                    log_alert(
+                        f'Stale in-progress backup interrupted (connection_id={cid}, count={len(stale_ids)}).',
+                        status='warning',
+                        source='backup',
+                        connection_id=cid,
+                    )
                 if BackupRecord.objects.filter(
                     connection_id=cid,
                     status=BackupRecord.Status.IN_PROGRESS,
@@ -120,6 +140,24 @@ def _finish_job(job_id: int, *, success: bool, error: str) -> None:
             job.last_error = error[-8000:]
         job.next_run = job.compute_next_run_after(after)
         job.save(update_fields=['last_run', 'last_status', 'last_error', 'next_run', 'updated_at'])
+        from baxconf.alertlog import log_alert
+
+        if success:
+            log_alert(
+                f'Scheduled job “{job.name}” completed.',
+                status='success',
+                source='schedule',
+                job_id=job.pk,
+                task_key=job.task_key,
+            )
+        else:
+            log_alert(
+                f'Scheduled job “{job.name}” failed: {job.last_error or "Task failed."}',
+                status='error',
+                source='schedule',
+                job_id=job.pk,
+                task_key=job.task_key,
+            )
 
 
 def _task_error_text(result: Any) -> str:

@@ -9,6 +9,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from accounts.permissions import ViewerCannotMutate
+from baxconf.alertlog import log_alert, log_http_alert
 from db_connections.access import connection_access_role
 
 from .services import perform_restore, resolved_backup_file
@@ -42,6 +43,12 @@ class BackupRecordViewSet(viewsets.ReadOnlyModelViewSet):
     def download(self, request, pk=None):
         backup = self.get_object()
         if backup.status != BackupRecord.Status.SUCCESS:
+            log_http_alert(
+                'Backup did not complete successfully.',
+                http_status=status.HTTP_400_BAD_REQUEST,
+                source='backup_download',
+                backup_id=backup.pk,
+            )
             return Response(
                 {'detail': 'Backup did not complete successfully.'},
                 status=status.HTTP_400_BAD_REQUEST,
@@ -49,10 +56,29 @@ class BackupRecordViewSet(viewsets.ReadOnlyModelViewSet):
         try:
             path = resolved_backup_file(backup)
         except BackupRestoreError as e:
+            log_http_alert(
+                str(e),
+                http_status=status.HTTP_404_NOT_FOUND,
+                source='backup_download',
+                backup_id=backup.pk,
+            )
             return Response({'detail': str(e)}, status=status.HTTP_404_NOT_FOUND)
         if not path.is_file():
+            log_http_alert(
+                'Backup file missing on disk.',
+                http_status=status.HTTP_404_NOT_FOUND,
+                source='backup_download',
+                backup_id=backup.pk,
+            )
             return Response({'detail': 'Backup file missing on disk.'}, status=status.HTTP_404_NOT_FOUND)
         name = backup.download_filename or path.name
+        log_alert(
+            f'Downloaded backup #{backup.pk} ({name}).',
+            status='success',
+            source='backup_download',
+            backup_id=backup.pk,
+            connection_id=backup.connection_id,
+        )
         return FileResponse(path.open('rb'), as_attachment=True, filename=name)
 
     @extend_schema(request=RestoreRequestSerializer, responses={201: RestoreRecordSerializer})
@@ -60,6 +86,12 @@ class BackupRecordViewSet(viewsets.ReadOnlyModelViewSet):
     def restore(self, request, pk=None):
         backup = self.get_object()
         if connection_access_role(request.user, backup.connection) == 'viewer':
+            log_http_alert(
+                'Viewers cannot run restores on shared connections.',
+                http_status=status.HTTP_403_FORBIDDEN,
+                source='restore',
+                backup_id=backup.pk,
+            )
             return Response(
                 {'detail': 'Viewers cannot run restores on shared connections.'},
                 status=status.HTTP_403_FORBIDDEN,
