@@ -70,3 +70,7 @@ export async function deleteStorageDestination(id: number): Promise<void> {
   const res = await apiFetch(`/api/storage-destinations/${id}/`, { method: 'DELETE' })
   if (!res.ok) throw new Error(await res.text())
 }
+
+export async function testStorageDestination(id: number): Promise<{ ok: boolean; detail?: string }> {
+  return apiJson<{ ok: boolean; detail?: string }>(`/api/storage-destinations/${id}/test/`, { method: 'POST' })
+}

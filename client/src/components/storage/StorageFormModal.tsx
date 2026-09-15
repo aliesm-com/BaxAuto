@@ -4,6 +4,7 @@ import {
   createStorageDestination,
   getStorageDestination,
   STORAGE_KINDS,
+  testStorageDestination,
   updateStorageDestination,
   type StorageDestinationWritePayload,
   type StorageKind,
@@ -50,12 +51,15 @@ export function StorageFormModal({ open, onOpenChange, destinationId, onSaved }:
   const [loading, setLoading] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [testing, setTesting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [testOk, setTestOk] = useState<string | null>(null)
 
   useEffect(() => {
     if (!open) return
     setError(null)
     setLoadError(null)
+    setTestOk(null)
 
     if (!isEdit) {
       setForm(emptyForm())
@@ -170,6 +174,24 @@ export function StorageFormModal({ open, onOpenChange, destinationId, onSaved }:
     }
   }
 
+  async function onTest() {
+    if (destinationId == null) {
+      setError('Save the destination first, then test.')
+      return
+    }
+    setError(null)
+    setTestOk(null)
+    setTesting(true)
+    try {
+      await testStorageDestination(destinationId)
+      setTestOk('Connection succeeded.')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Test failed')
+    } finally {
+      setTesting(false)
+    }
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[min(90vh,920px)] max-w-xl overflow-y-auto">
@@ -187,6 +209,7 @@ export function StorageFormModal({ open, onOpenChange, destinationId, onSaved }:
         ) : (
           <form onSubmit={onSubmit} className="space-y-4">
             {error ? <p className="text-sm text-red-600">{error}</p> : null}
+            {testOk ? <p className="text-sm text-emerald-700">{testOk}</p> : null}
 
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2 sm:col-span-2">
@@ -292,9 +315,16 @@ export function StorageFormModal({ open, onOpenChange, destinationId, onSaved }:
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={saving}>
-                {saving ? 'Saving…' : isEdit ? 'Save' : 'Create'}
-              </Button>
+              <div className="flex gap-2">
+                {isEdit ? (
+                  <Button type="button" variant="outline" disabled={testing || saving} onClick={() => void onTest()}>
+                    {testing ? 'Testing…' : 'Test connection'}
+                  </Button>
+                ) : null}
+                <Button type="submit" disabled={saving}>
+                  {saving ? 'Saving…' : isEdit ? 'Save' : 'Create'}
+                </Button>
+              </div>
             </DialogFooter>
           </form>
         )}
