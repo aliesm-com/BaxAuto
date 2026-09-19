@@ -1,4 +1,4 @@
-name: baxauto
+version: '3.8'
 
 services:
   # ─────────────────────────────────────────
@@ -51,8 +51,7 @@ services:
       - DATABASE_URL=postgresql://${POSTGRES_USER:-baxauto}:${POSTGRES_PASSWORD:-baxauto}@baxauto-postgres:5432/${POSTGRES_DB:-baxauto}
       - LOGS_DIR=/logs
     depends_on:
-      baxauto-postgres:
-        condition: service_healthy
+      - baxauto-postgres
     networks:
       - devopsio
 
@@ -109,10 +108,8 @@ services:
       - TIME_ZONE=Asia/Tehran
       - DATABASE_URL=postgresql://${POSTGRES_USER:-baxauto}:${POSTGRES_PASSWORD:-baxauto}@baxauto-postgres:5432/${POSTGRES_DB:-baxauto}
     depends_on:
-      baxauto-postgres:
-        condition: service_healthy
-      baxauto-api:
-        condition: service_started
+      - baxauto-postgres
+      - baxauto-api
     restart: unless-stopped
     networks:
       - devopsio

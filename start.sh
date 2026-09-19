@@ -94,10 +94,19 @@ set -a
 source .env
 set +a
 
-if command -v docker-compose &> /dev/null; then
+if docker compose version >/dev/null 2>&1; then
+  DOCKER_COMPOSE="docker compose"
+elif command -v docker-compose >/dev/null 2>&1; then
   DOCKER_COMPOSE="docker-compose"
 else
-  DOCKER_COMPOSE="docker compose"
+  echo "docker compose is not installed."
+  exit 1
+fi
+
+if [ "$PROFILE" == "prod" ]; then
+  export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-baxauto-prod}"
+else
+  export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-baxauto}"
 fi
 
 if [ "$ACTION" == "up" ]; then

@@ -1,4 +1,4 @@
-name: baxauto-prod
+version: '3.8'
 
 services:
   # ─────────────────────────────────────────
@@ -62,8 +62,7 @@ services:
       - DB_CREDENTIALS_FERNET_KEY=${DB_CREDENTIALS_FERNET_KEY:-}
       - LOGS_DIR=/logs
     depends_on:
-      baxauto-postgres:
-        condition: service_healthy
+      - baxauto-postgres
     restart: unless-stopped
     networks:
       - devopsio
@@ -157,10 +156,8 @@ services:
       - DB_CREDENTIALS_FERNET_KEY=${DB_CREDENTIALS_FERNET_KEY:-}
       - LOGS_DIR=/logs
     depends_on:
-      baxauto-postgres:
-        condition: service_healthy
-      baxauto-api:
-        condition: service_started
+      - baxauto-postgres
+      - baxauto-api
     restart: unless-stopped
     networks:
       - devopsio
