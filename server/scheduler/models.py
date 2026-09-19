@@ -146,8 +146,10 @@ class ScheduledJob(models.Model):
 
         expr = (self.crontab_expression or '').strip()
         tz = timezone.get_current_timezone()
-        itr = croniter(expr, base, tzinfo=tz)
-        nxt = itr.get_next(datetime)
+        # Use wall-clock time in the project TZ. Avoid croniter(..., tzinfo=…) —
+        # that kwarg is missing on several croniter releases (incl. what Docker ships).
+        local_base = timezone.localtime(base, tz).replace(tzinfo=None)
+        nxt = croniter(expr, local_base).get_next(datetime)
         if timezone.is_naive(nxt):
             nxt = timezone.make_aware(nxt, tz)
         return nxt

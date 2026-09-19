@@ -6,10 +6,8 @@ import logging
 import traceback
 
 from django.core.exceptions import ValidationError as DjangoValidationError
-from rest_framework import status
 from rest_framework.exceptions import NotAuthenticated
 from rest_framework.exceptions import ValidationError as DRFValidationError
-from rest_framework.response import Response
 from rest_framework.views import exception_handler
 
 from baxconf.alertlog import log_alert, log_http_alert
@@ -48,7 +46,6 @@ def api_exception_handler(exc, context):
         exc = _django_validation_as_drf(exc)
 
     response = exception_handler(exc, context)
-    # Missing credentials is routine; bad-password / other failures still log.
     if isinstance(exc, NotAuthenticated):
         return response
 
@@ -58,16 +55,16 @@ def api_exception_handler(exc, context):
     path = getattr(request, 'path', '')
     method = getattr(request, 'method', '')
 
-    # Unhandled exception → DRF would hide it as generic 500. Surface the real error.
+    # Unhandled exception: log full traceback for gunicorn/console only.
+    # Return None so DRF keeps a generic 500 body (nothing sensitive to the client).
     if response is None:
-        tb = traceback.format_exc()
         detail = f'{exc.__class__.__name__}: {exc}'
         logger.error(
             'API unhandled error %s %s → %s\n%s',
             method,
             path,
             detail,
-            tb,
+            traceback.format_exc(),
         )
         log_alert(
             detail,
@@ -76,31 +73,17 @@ def api_exception_handler(exc, context):
             method=method,
             path=path,
         )
-        return Response(
-            {
-                'detail': detail,
-                'exception': exc.__class__.__name__,
-                'path': path,
-                'method': method,
-                'traceback': tb.splitlines()[-40:],
-            },
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        )
+        return None
 
     if response.status_code >= 400:
+        msg = _message_from_data(response.data) or str(exc)
         log_http_alert(
-            _message_from_data(response.data) or str(exc),
+            msg,
             http_status=response.status_code,
             source=source,
             method=method,
             path=path,
         )
         if response.status_code >= 500:
-            logger.error(
-                'API %s %s → %s %s',
-                method,
-                path,
-                response.status_code,
-                _message_from_data(response.data) or str(exc),
-            )
+            logger.error('API %s %s → %s %s', method, path, response.status_code, msg)
     return response
