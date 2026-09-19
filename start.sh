@@ -1,19 +1,30 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck disable=SC1091
-source "$SCRIPT_DIR/_env.sh"
+# Execute this file — do not `source` / `.` it.
+#   ./start.sh --profile dev --network local --action up
+# `return` is only valid in a sourced script; if this succeeds we were sourced
+# and must not `exit` (that would close the whole terminal).
+if (return 0 2>/dev/null); then
+  echo "Don't source start.sh — that closes the terminal."
+  echo "Run:  ./start.sh --profile dev --network local --action up"
+  return 1
+fi
 
 # ./start.sh --profile dev --network full --action up
 # ./start.sh --profile dev --network local --action up
 # ./start.sh --profile dev --network netbird --action up
-
 # ./start.sh --profile prod --network full --action up
 # ./start.sh --profile prod --network local --action up
 # ./start.sh --profile prod --network netbird --action up
+# ./start.sh --profile dev --action down
+# ./start.sh --profile prod --action down
 
-# ./start.sh --profile dev  --action down
-# ./start.sh --profile prod  --action down
+_this="${BASH_SOURCE[0]:-$0}"
+SCRIPT_DIR="$(cd "$(dirname "$_this")" && pwd)"
+unset _this
+# shellcheck disable=SC1091
+# shellcheck source=_env.sh
+source "$SCRIPT_DIR/_env.sh" || exit 1
 
 PROFILE="dev"
 NETWORK="local"
@@ -77,6 +88,12 @@ if [ ! -f .env ]; then
   fi
 fi
 
+# Host publish ports (from .env) for the URL summary after `up`.
+set -a
+# shellcheck disable=SC1091
+source .env
+set +a
+
 if command -v docker-compose &> /dev/null; then
   DOCKER_COMPOSE="docker-compose"
 else
@@ -93,9 +110,9 @@ if [ "$ACTION" == "up" ]; then
     exit 1
   fi
   echo
-  echo "BaxAuto dashboard:  http://${HOST_IP}:8080"
-  echo "BaxAuto landing:    http://${HOST_IP}:4173"
-  echo "BaxAuto API:        http://${HOST_IP}:8000"
+  echo "BaxAuto dashboard:  http://${HOST_IP}:${BAXAUTO_DASHBOARD_PORT:-18280}"
+  echo "BaxAuto landing:    http://${HOST_IP}:${BAXAUTO_LANDING_PORT:-18417}"
+  echo "BaxAuto API:        http://${HOST_IP}:${BAXAUTO_API_PORT:-18200}"
 elif [ "$ACTION" == "down" ]; then
   HOST_IP=$HOST_IP $DOCKER_COMPOSE -f "$COMPOSE_FILE" --env-file .env down
 else

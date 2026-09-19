@@ -41,7 +41,7 @@ services:
       - baxauto_static_prod:/app/staticfiles
       - baxauto_media_prod:/app/media
     ports:
-      - "${HOST_IP:-127.0.0.1}:8000:8000"
+      - "${HOST_IP:-127.0.0.1}:${BAXAUTO_API_PORT:-18200}:8000"
     logging:
       driver: "json-file"
       options:
@@ -80,7 +80,7 @@ services:
       dockerfile: Dockerfile
     container_name: baxauto-dashboard-prod
     ports:
-      - "${HOST_IP:-127.0.0.1}:8080:80"
+      - "${HOST_IP:-127.0.0.1}:${BAXAUTO_DASHBOARD_PORT:-18280}:80"
     volumes:
       - ../client/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:
@@ -107,7 +107,7 @@ services:
       dockerfile: Dockerfile
     container_name: baxauto-landing-prod
     ports:
-      - "${HOST_IP:-127.0.0.1}:4173:80"
+      - "${HOST_IP:-127.0.0.1}:${BAXAUTO_LANDING_PORT:-18417}:80"
     volumes:
       - ../landing/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
     restart: unless-stopped

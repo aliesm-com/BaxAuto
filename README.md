@@ -69,10 +69,10 @@ From the repository root:
 
    | URL | What |
    |-----|------|
-   | [http://localhost:8080](http://localhost:8080) | BaxAuto dashboard (nginx proxies `/api` → API) |
-   | [http://localhost:4173](http://localhost:4173) | BaxAuto landing (static Astro) |
-   | [http://localhost:8000](http://localhost:8000) | BaxAuto API directly |
-   | [http://localhost:8080/admin/](http://localhost:8080/admin/) | Django admin (also on API port 8000) |
+   | [http://localhost:18280](http://localhost:18280) | BaxAuto dashboard (nginx proxies `/api` → API) |
+   | [http://localhost:18417](http://localhost:18417) | BaxAuto landing (static Astro) |
+   | [http://localhost:18200](http://localhost:18200) | BaxAuto API directly |
+   | [http://localhost:18280/admin/](http://localhost:18280/admin/) | Django admin (also on API port 18200) |
 
 The API container runs migrations on start, then `runserver` (Gunicorn in `--profile prod`). Compose also starts **BaxAuto Postgres** for the app catalog. The API image ships **PostgreSQL/MySQL clients**, **Redis CLI**, **MongoDB tools**, **SQL Server ODBC + sqlcmd + SqlPackage**, and more — so backup commands work without installing toolchains on your laptop.
 
@@ -123,7 +123,7 @@ npm run dev
 
 Dev server uses a **fixed port** — open **[http://127.0.0.1:4788](http://127.0.0.1:4788)** (or `localhost:4788`). If something else is already bound to that port, stop it or change `server.port` in `landing/astro.config.mjs`.
 
-Build static output with `npm run build` → `landing/dist/`. With Docker Compose, the built site is served at **[http://localhost:4173](http://localhost:4173)**.
+Build static output with `npm run build` → `landing/dist/`. With Docker Compose, the built site is served at **[http://localhost:18417](http://localhost:18417)** (override with `BAXAUTO_LANDING_PORT`).
 
 ---
 
@@ -138,7 +138,7 @@ Settings load from **`.env`** at the repo root when using Docker (`./start.sh` /
 | `ALLOWED_HOSTS` | Comma-separated hostnames |
 | `DATABASE_URL` | PostgreSQL URL; omit for **SQLite** beside `manage.py`. Docker Compose points this at **BaxAuto Postgres** automatically. |
 | `TIME_ZONE` | Django timezone (Docker defaults to `Asia/Tehran`) |
-| `CORS_ALLOWED_ORIGINS` | Browser origins allowed to call the API (e.g. `http://localhost:5173`, `http://localhost:8080`) |
+| `CORS_ALLOWED_ORIGINS` | Browser origins allowed to call the API (e.g. `http://localhost:5173`, `http://localhost:18280`) |
 | `CSRF_TRUSTED_ORIGINS` | Needed behind HTTPS proxies or certain cross-origin POST flows |
 | `DB_CREDENTIALS_FERNET_KEY` | Fernet key for **encrypting saved DB passwords** in `db_connections`. Generate once and keep stable — rotating loses decrypt for old rows |
 
