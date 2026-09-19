@@ -13,6 +13,7 @@ Environment variables (optional `.env` next to `manage.py`):
 import os
 from datetime import timedelta
 from pathlib import Path
+from urllib.parse import urlparse
 
 import environ
 
@@ -51,6 +52,26 @@ ALLOWED_HOSTS = env.list(
     'ALLOWED_HOSTS',
     default=['localhost', '127.0.0.1'],
 )
+
+# Dashboard is reached via nginx; trust X-Forwarded-* from the proxy.
+USE_X_FORWARDED_HOST = True
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
+
+def _merge_public_url(hosts: list[str], cors: list[str], csrf: list[str]) -> None:
+    raw = env.str('BAXAUTO_PUBLIC_URL', default='').strip()
+    if not raw:
+        return
+    parsed = urlparse(raw if '://' in raw else f'http://{raw}')
+    host = (parsed.hostname or '').strip()
+    if host and host not in hosts and '*' not in hosts:
+        hosts.append(host)
+    if parsed.scheme and parsed.netloc:
+        origin = f'{parsed.scheme}://{parsed.netloc}'
+        if origin not in cors:
+            cors.append(origin)
+        if origin not in csrf:
+            csrf.append(origin)
 
 
 # Application definition
@@ -178,6 +199,10 @@ MEDIA_ROOT = BASE_DIR / 'media'
 # django-cors-headers
 CORS_ALLOWED_ORIGINS = env.list('CORS_ALLOWED_ORIGINS', default=[])
 CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOW_ALL_ORIGINS = env.bool('CORS_ALLOW_ALL_ORIGINS', default=False)
+
+CSRF_TRUSTED_ORIGINS = env.list('CSRF_TRUSTED_ORIGINS', default=[])
+_merge_public_url(ALLOWED_HOSTS, CORS_ALLOWED_ORIGINS, CSRF_TRUSTED_ORIGINS)
 
 
 # Django REST framework + JWT + OpenAPI
@@ -223,9 +248,6 @@ SIMPLE_JWT = {
     'BLACKLIST_AFTER_ROTATION': True,
     'UPDATE_LAST_LOGIN': True,
 }
-
-CSRF_TRUSTED_ORIGINS = env.list('CSRF_TRUSTED_ORIGINS', default=[])
-
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/stable/ref/settings/#default-auto-field
