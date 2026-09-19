@@ -6,6 +6,7 @@ import shutil
 from pathlib import Path
 
 from django.conf import settings
+from django.db import connections
 from django.utils import timezone
 from django.utils.text import slugify
 
@@ -67,6 +68,8 @@ def perform_backup(
         status=BackupRecord.Status.IN_PROGRESS,
         engine=engine,
     )
+    record_id = record.pk
+    connections.close_all()
 
     media_root = Path(settings.MEDIA_ROOT).resolve()
 
@@ -97,6 +100,7 @@ def perform_backup(
 
         abs_path = path.resolve()
         rel = abs_path.relative_to(media_root)
+        record = BackupRecord.objects.get(pk=record_id)
         record.status = BackupRecord.Status.SUCCESS
         record.relative_media_path = rel.as_posix()
         record.download_filename = filename
@@ -112,12 +116,33 @@ def perform_backup(
                 'updated_at',
             ]
         )
+        from baxconf.alertlog import log_alert
+
+        kind = 'Scheduled backup' if trigger == BackupRecord.Trigger.SCHEDULED else 'Backup'
+        log_alert(
+            f'{kind} of “{connection.name}” completed ({filename}, {record.size_bytes} bytes).',
+            status='success',
+            source='backup',
+            connection_id=connection.pk,
+            backup_id=record.pk,
+        )
         return path, filename
     except Exception as e:
+        record = BackupRecord.objects.get(pk=record_id)
         record.status = BackupRecord.Status.FAILED
         record.error_message = str(e)[:8000]
         record.finished_at = timezone.now()
         record.save(update_fields=['status', 'error_message', 'finished_at', 'updated_at'])
+        from baxconf.alertlog import log_alert
+
+        kind = 'Scheduled backup' if trigger == BackupRecord.Trigger.SCHEDULED else 'Backup'
+        log_alert(
+            f'{kind} of “{connection.name}” failed: {record.error_message}',
+            status='error',
+            source='backup',
+            connection_id=connection.pk,
+            backup_id=record_id,
+        )
         raise
 
 

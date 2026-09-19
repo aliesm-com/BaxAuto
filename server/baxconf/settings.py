@@ -118,6 +118,9 @@ _sqlite_default_url = 'sqlite:///' + os.path.join(str(BASE_DIR), 'db.sqlite3').r
     '\\', '/'
 )
 DATABASES = {'default': env.db('DATABASE_URL', default=_sqlite_default_url)}
+if DATABASES['default'].get('ENGINE', '').endswith('sqlite3'):
+    DATABASES['default'].setdefault('OPTIONS', {})
+    DATABASES['default']['OPTIONS'].setdefault('timeout', 60)
 
 
 # Password validation
@@ -186,6 +189,24 @@ REST_FRAMEWORK = {
         'rest_framework.permissions.IsAuthenticatedOrReadOnly',
     ),
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+    'EXCEPTION_HANDLER': 'baxconf.exception_handler.api_exception_handler',
+}
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+        },
+    },
+    'loggers': {
+        'baxauto.alert': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': True,
+        },
+    },
 }
 
 SPECTACULAR_SETTINGS = {

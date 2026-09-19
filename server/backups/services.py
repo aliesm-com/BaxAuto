@@ -97,12 +97,32 @@ def perform_restore(
         rr.status = RestoreRecord.Status.SUCCESS
         rr.finished_at = timezone.now()
         rr.save(update_fields=['status', 'finished_at', 'updated_at'])
+        from baxconf.alertlog import log_alert
+
+        log_alert(
+            f'Restore of backup #{backup.pk} onto “{connection.name}” completed.',
+            status='success',
+            source='restore',
+            connection_id=connection.pk,
+            restore_id=rr.pk,
+            backup_id=backup.pk,
+        )
         return rr
     except Exception as e:
         rr.status = RestoreRecord.Status.FAILED
         rr.error_message = str(e)[:8000]
         rr.finished_at = timezone.now()
         rr.save(update_fields=['status', 'error_message', 'finished_at', 'updated_at'])
+        from baxconf.alertlog import log_alert
+
+        log_alert(
+            f'Restore of backup #{backup.pk} onto “{connection.name}” failed: {rr.error_message}',
+            status='error',
+            source='restore',
+            connection_id=connection.pk,
+            restore_id=rr.pk,
+            backup_id=backup.pk,
+        )
         if isinstance(e, BackupRestoreError):
             raise
         raise BackupRestoreError(str(e)) from e
