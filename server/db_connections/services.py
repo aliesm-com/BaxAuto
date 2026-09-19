@@ -59,6 +59,7 @@ def _fanout_backup_to_storages(user_id: int, local_path: Path, remote_relative: 
         }
         try:
             entry['remote'] = upload_backup_file(dest, local_path, remote_relative)
+            entry['relative'] = remote_relative
             entry['ok'] = True
         except (StorageTransferError, OSError) as e:
             entry['error'] = str(e)[:800]
@@ -116,6 +117,9 @@ def perform_backup(
         trigger=trigger,
         status=BackupRecord.Status.IN_PROGRESS,
         engine=engine,
+        scheduled_job_id=(
+            schedule_job_id if trigger == BackupRecord.Trigger.SCHEDULED and schedule_job_id else None
+        ),
     )
     record_id = record.pk
     connections.close_all()

@@ -10,6 +10,8 @@ export interface ScheduledJobDTO {
   task_key: string
   payload: Record<string, unknown>
   run_as: number | null
+  /** Days to keep scheduled backups; null = forever */
+  retention_days: number | null
   last_run: string | null
   next_run: string | null
   last_status: string
@@ -27,6 +29,7 @@ export interface ScheduledJobWritePayload {
   task_key: string
   payload?: Record<string, unknown>
   run_as?: number | null
+  retention_days?: number | null
 }
 
 export async function listScheduledJobs(): Promise<ScheduledJobDTO[]> {

@@ -172,6 +172,16 @@ export function ScheduleDetailPage() {
               <dd className="font-mono">{row.run_as ?? '—'}</dd>
             </div>
             <div>
+              <dt className="text-muted-foreground">Retention</dt>
+              <dd>
+                {row.task_key === 'backup_saved_connection'
+                  ? row.retention_days != null
+                    ? `${row.retention_days} days`
+                    : 'Forever'
+                  : '—'}
+              </dd>
+            </div>
+            <div>
               <dt className="text-muted-foreground">Next run</dt>
               <dd>{row.next_run ?? '—'}</dd>
             </div>

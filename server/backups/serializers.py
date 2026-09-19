@@ -42,6 +42,7 @@ class BackupRecordSerializer(serializers.ModelSerializer):
             'connection_name',
             'initiated_by',
             'trigger',
+            'scheduled_job',
             'status',
             'engine',
             'relative_media_path',

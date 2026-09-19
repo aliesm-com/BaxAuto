@@ -60,6 +60,15 @@ class ScheduledJob(models.Model):
         related_name='scheduler_jobs',
         help_text='Required for backup_saved_connection (scopes DB rows to this user).',
     )
+    retention_days = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        default=30,
+        help_text=(
+            'For backup jobs: delete successful backups from this schedule older than N days. '
+            'Leave empty to keep forever.'
+        ),
+    )
 
     last_run = models.DateTimeField(null=True, blank=True)
     next_run = models.DateTimeField(null=True, blank=True)
@@ -120,6 +129,9 @@ class ScheduledJob(models.Model):
             # Normalize so later ticks always see an int.
             self.payload['connection_id'] = cid
 
+            if self.retention_days is not None and self.retention_days < 1:
+                raise ValidationError({'retention_days': 'Use at least 1 day, or leave empty to keep forever.'})
+
             try:
                 DatabaseConnection.objects.get(pk=cid, user_id=self.run_as_id)
             except DatabaseConnection.DoesNotExist as e:
@@ -132,8 +144,11 @@ class ScheduledJob(models.Model):
                     }
                 ) from e
 
-        if self.task_key == 'noop' and self.payload:
-            raise ValidationError({'payload': 'No payload keys are used for noop.'})
+        if self.task_key == 'noop':
+            if self.payload:
+                raise ValidationError({'payload': 'No payload keys are used for noop.'})
+            if self.retention_days is not None:
+                raise ValidationError({'retention_days': 'Retention only applies to backup schedules.'})
 
     def compute_next_run_after(self, base: datetime) -> datetime:
         """Earliest future run strictly after ``base`` for this schedule."""

@@ -10,6 +10,7 @@ class ScheduledJobAdmin(admin.ModelAdmin):
         'enabled',
         'schedule_kind',
         'task_key',
+        'retention_days',
         'next_run',
         'last_run',
         'last_status',

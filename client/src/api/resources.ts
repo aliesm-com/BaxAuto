@@ -17,6 +17,7 @@ export interface BackupRecord {
   connection: number
   connection_name: string
   trigger: string
+  scheduled_job: number | null
   status: string
   engine: string
   relative_media_path: string

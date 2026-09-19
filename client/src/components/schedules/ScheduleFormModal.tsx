@@ -41,6 +41,7 @@ export function ScheduleFormModal({ open, onOpenChange, jobId, onSaved }: Schedu
   const [payloadText, setPayloadText] = useState('{}')
   const [selectedConnectionId, setSelectedConnectionId] = useState<number | ''>('')
   const [compress, setCompress] = useState(false)
+  const [retentionDays, setRetentionDays] = useState('30')
   const [connections, setConnections] = useState<DatabaseConnectionDTO[]>([])
   const [connectionsLoading, setConnectionsLoading] = useState(false)
   const [connectionsError, setConnectionsError] = useState<string | null>(null)
@@ -65,6 +66,7 @@ export function ScheduleFormModal({ open, onOpenChange, jobId, onSaved }: Schedu
       setPayloadText('{}')
       setSelectedConnectionId('')
       setCompress(false)
+      setRetentionDays('30')
       setRunAsText('')
       setLoadingJob(false)
       return
@@ -82,6 +84,7 @@ export function ScheduleFormModal({ open, onOpenChange, jobId, onSaved }: Schedu
         setIntervalSeconds(j.interval_seconds != null ? String(j.interval_seconds) : '3600')
         setCrontab(j.crontab_expression?.trim() || '0 */6 * * *')
         setTaskKey(j.task_key)
+        setRetentionDays(j.retention_days != null ? String(j.retention_days) : '')
         const cid = j.payload?.connection_id
         if (j.task_key === 'backup_saved_connection' && typeof cid === 'number' && Number.isInteger(cid)) {
           setSelectedConnectionId(cid)
@@ -186,6 +189,21 @@ export function ScheduleFormModal({ open, onOpenChange, jobId, onSaved }: Schedu
       }
     }
 
+    let retentionValue: number | null = null
+    if (taskKey === 'backup_saved_connection') {
+      const trimmed = retentionDays.trim()
+      if (trimmed === '') {
+        retentionValue = null
+      } else {
+        const n = Number(trimmed)
+        if (!Number.isInteger(n) || n < 1) {
+          setError('Retention must be a whole number of days (min 1), or empty to keep forever.')
+          return
+        }
+        retentionValue = n
+      }
+    }
+
     const body = {
       name: name.trim(),
       enabled,
@@ -195,6 +213,7 @@ export function ScheduleFormModal({ open, onOpenChange, jobId, onSaved }: Schedu
       task_key: taskKey,
       payload,
       run_as: taskKey === 'backup_saved_connection' ? runAs : null,
+      retention_days: taskKey === 'backup_saved_connection' ? retentionValue : null,
     }
 
     setSaving(true)
@@ -350,6 +369,38 @@ export function ScheduleFormModal({ open, onOpenChange, jobId, onSaved }: Schedu
                   />
                   <span className="text-sm font-medium">Store compressed (gzip)</span>
                 </label>
+                <div className="space-y-2">
+                  <Label htmlFor="sched-modal-retention">Keep backups for (days)</Label>
+                  <Input
+                    id="sched-modal-retention"
+                    inputMode="numeric"
+                    value={retentionDays}
+                    onChange={(e) => setRetentionDays(e.target.value)}
+                    placeholder="30"
+                  />
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      { label: '7d', value: '7' },
+                      { label: '30d', value: '30' },
+                      { label: '60d', value: '60' },
+                      { label: '90d', value: '90' },
+                      { label: 'Forever', value: '' },
+                    ].map((p) => (
+                      <button
+                        key={p.label}
+                        type="button"
+                        className="rounded-md border border-border bg-background px-2 py-1 text-xs text-muted-foreground hover:bg-muted"
+                        onClick={() => setRetentionDays(p.value)}
+                      >
+                        {p.label}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    After each run, successful backups from this schedule older than N days are deleted (local + remote).
+                    Leave empty to keep forever. Examples: daily → 30, weekly → 60, monthly → 90.
+                  </p>
+                </div>
                 <p className="text-xs text-muted-foreground">
                   Each run is copied to every storage destination as{' '}
                   <span className="font-mono">{'{db}/{schedule-id-name}/file'}</span>. Manual backups use a{' '}

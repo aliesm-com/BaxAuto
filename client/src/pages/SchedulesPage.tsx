@@ -128,6 +128,7 @@ export function SchedulesPage() {
                 <th className="pb-3 pr-4 font-medium">Name</th>
                 <th className="pb-3 pr-4 font-medium">Schedule</th>
                 <th className="pb-3 pr-4 font-medium">Task</th>
+                <th className="pb-3 pr-4 font-medium">Retention</th>
                 <th className="pb-3 pr-4 font-medium">Enabled</th>
                 <th className="pb-3 pr-4 font-medium">Next run</th>
                 <th className="pb-3 font-medium text-right">Actions</th>
@@ -145,6 +146,13 @@ export function SchedulesPage() {
                     {j.schedule_kind === 'interval' ? `Every ${j.interval_seconds}s` : j.crontab_expression || '—'}
                   </td>
                   <td className="py-3 pr-4 font-mono text-xs">{j.task_key}</td>
+                  <td className="py-3 pr-4 text-muted-foreground">
+                    {j.task_key === 'backup_saved_connection'
+                      ? j.retention_days != null
+                        ? `${j.retention_days}d`
+                        : 'Forever'
+                      : '—'}
+                  </td>
                   <td className="py-3 pr-4">
                     <Badge variant={j.enabled ? 'success' : 'muted'}>{j.enabled ? 'Yes' : 'No'}</Badge>
                   </td>

@@ -33,7 +33,8 @@ def backup_saved_connection(
     Run :func:`db_connections.services.perform_backup` for a connection row.
 
     ``owner_user_id`` must match ``DatabaseConnection.user_id`` so scheduled backups
-    stay scoped to that user's saved connections.
+    stay scoped to that user's saved connections. After success, applies the schedule's
+    retention policy (if any).
     """
     conn = DatabaseConnection.objects.get(pk=connection_id, user_id=owner_user_id)
     path, _name = perform_backup(
@@ -43,6 +44,17 @@ def backup_saved_connection(
         schedule_job_id=schedule_job_id,
         schedule_job_name=schedule_job_name or '',
     )
+    if schedule_job_id:
+        from scheduler.models import ScheduledJob
+
+        from backups.retention import prune_schedule_backups
+
+        retention = (
+            ScheduledJob.objects.filter(pk=schedule_job_id)
+            .values_list('retention_days', flat=True)
+            .first()
+        )
+        prune_schedule_backups(schedule_job_id, retention_days=retention)
     return str(path)
 
 

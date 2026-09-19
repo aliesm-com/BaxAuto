@@ -29,6 +29,14 @@ class BackupRecord(models.Model):
         related_name='backup_records_initiated',
     )
     trigger = models.CharField(max_length=16, choices=Trigger.choices, default=Trigger.MANUAL)
+    scheduled_job = models.ForeignKey(
+        'scheduler.ScheduledJob',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='backup_records',
+        help_text='Set when this backup was produced by a schedule (used for retention).',
+    )
     status = models.CharField(max_length=16, choices=Status.choices, default=Status.IN_PROGRESS)
 
     engine = models.CharField(max_length=32)
@@ -59,6 +67,7 @@ class BackupRecord(models.Model):
         ordering = ['-created_at']
         indexes = [
             models.Index(fields=['connection', '-created_at']),
+            models.Index(fields=['scheduled_job', '-created_at']),
         ]
 
     def __str__(self) -> str:

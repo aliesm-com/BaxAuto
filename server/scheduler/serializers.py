@@ -27,6 +27,7 @@ class ScheduledJobSerializer(serializers.ModelSerializer):
         allow_null=True,
         required=False,
     )
+    retention_days = serializers.IntegerField(allow_null=True, required=False, min_value=1)
 
     class Meta:
         model = ScheduledJob
@@ -40,6 +41,7 @@ class ScheduledJobSerializer(serializers.ModelSerializer):
             'task_key',
             'payload',
             'run_as',
+            'retention_days',
             'last_run',
             'next_run',
             'last_status',

@@ -9,6 +9,7 @@ class BackupRecordAdmin(admin.ModelAdmin):
         'id',
         'connection',
         'trigger',
+        'scheduled_job',
         'status',
         'engine',
         'download_filename',
@@ -20,7 +21,7 @@ class BackupRecordAdmin(admin.ModelAdmin):
     list_filter = ('status', 'trigger', 'engine', 'compressed')
     search_fields = ('relative_media_path', 'download_filename', 'error_message')
     readonly_fields = ('created_at', 'updated_at', 'finished_at')
-
+    raw_id_fields = ('connection', 'initiated_by', 'scheduled_job')
 
 @admin.register(RestoreRecord)
 class RestoreRecordAdmin(admin.ModelAdmin):
