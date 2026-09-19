@@ -55,13 +55,13 @@ class ViewerCannotMutate(permissions.BasePermission):
 
 
 class ScheduledJobAccessPermission(permissions.BasePermission):
-    """Any authenticated user may read schedules; writes restricted to app admins."""
+    """Any authenticated user may read schedules; writes for editors/admins."""
 
-    message = 'Managing schedules requires admin privileges.'
+    message = 'Managing schedules requires editor or admin privileges.'
 
     def has_permission(self, request, view):
         if not request.user or not request.user.is_authenticated:
             return False
         if request.method in SAFE:
             return True
-        return bool(request.user.is_superuser or getattr(request.user, 'is_admin', False))
+        return user_can_mutate_app_data(request.user)

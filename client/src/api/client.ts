@@ -69,9 +69,22 @@ export async function apiJson<T>(path: string, init: RequestInit = {}): Promise<
     const text = await res.text()
     let detail = text
     try {
-      const j = JSON.parse(text) as { detail?: unknown }
-      if (typeof j.detail === 'string') detail = j.detail
-      else if (Array.isArray(j.detail)) detail = JSON.stringify(j.detail)
+      const j = JSON.parse(text) as Record<string, unknown>
+      if (typeof j.detail === 'string') {
+        detail = j.detail
+      } else if (Array.isArray(j.detail)) {
+        detail = j.detail.map(String).join('; ')
+      } else if (j && typeof j === 'object') {
+        // DRF field errors: { name: ["…"], payload: ["…"] }
+        const parts: string[] = []
+        for (const [key, val] of Object.entries(j)) {
+          if (key === 'detail') continue
+          if (Array.isArray(val)) parts.push(`${key}: ${val.map(String).join(', ')}`)
+          else if (typeof val === 'string') parts.push(`${key}: ${val}`)
+          else if (val != null) parts.push(`${key}: ${JSON.stringify(val)}`)
+        }
+        if (parts.length) detail = parts.join(' · ')
+      }
     } catch {
       /* ignore */
     }

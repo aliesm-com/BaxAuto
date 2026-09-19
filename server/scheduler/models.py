@@ -106,19 +106,30 @@ class ScheduledJob(models.Model):
         if self.task_key == 'backup_saved_connection':
             if self.run_as_id is None:
                 raise ValidationError({'run_as': 'Pick the user whose saved connection will be backed up.'})
-            cid = self.payload.get('connection_id')
-            if cid is None:
+            raw_cid = self.payload.get('connection_id') if isinstance(self.payload, dict) else None
+            if raw_cid is None:
                 raise ValidationError({'payload': 'Include {"connection_id": <int>} in payload.'})
-            if not isinstance(cid, int):
+            if isinstance(raw_cid, bool):
                 raise ValidationError({'payload': 'connection_id must be an integer.'})
+            try:
+                cid = int(raw_cid)
+            except (TypeError, ValueError) as e:
+                raise ValidationError({'payload': 'connection_id must be an integer.'}) from e
             if 'compress' in self.payload and self.payload.get('compress') not in (True, False):
                 raise ValidationError({'payload': 'compress must be true or false when set.'})
+            # Normalize so later ticks always see an int.
+            self.payload['connection_id'] = cid
 
             try:
                 DatabaseConnection.objects.get(pk=cid, user_id=self.run_as_id)
             except DatabaseConnection.DoesNotExist as e:
                 raise ValidationError(
-                    {'payload': 'connection_id must belong to the selected run_as user.'}
+                    {
+                        'payload': (
+                            'connection_id must belong to the selected run_as user '
+                            f'(connection={cid}, run_as={self.run_as_id}).'
+                        )
+                    }
                 ) from e
 
         if self.task_key == 'noop' and self.payload:
