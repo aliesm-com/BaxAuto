@@ -58,39 +58,29 @@ RUN set -eux \
          *) echo "SqlPackage Linux zip is x64-only; skipping on $ARCH" ;; \
        esac
 
-# MongoDB Database Tools (mongodump / mongorestore).
-# Debian 12 has no arm64 build; use Ubuntu 22.04 arm64 package there.
-ARG MONGO_TOOLS_VERSION=100.17.0
+# MongoDB Database Tools (mongodump / mongorestore) and mongosh.
+# Install from repo.mongodb.org — fastdl.mongodb.org/CloudFront often returns 403
+# (missing tarball names, or blocked regions).
+ARG MONGO_ORG_MAJOR=8.0
 RUN set -eux \
     && ARCH="$(dpkg --print-architecture)" \
+    && curl -fsSL "https://pgp.mongodb.com/server-${MONGO_ORG_MAJOR}.asc" \
+       | gpg --dearmor -o /usr/share/keyrings/mongodb-server.gpg \
     && case "$ARCH" in \
-         amd64) PLATFORM=debian12-x86_64 ;; \
-         arm64) PLATFORM=ubuntu2204-arm64 ;; \
+         amd64) \
+           echo "deb [ signed-by=/usr/share/keyrings/mongodb-server.gpg ] http://repo.mongodb.org/apt/debian bookworm/mongodb-org/${MONGO_ORG_MAJOR} main" \
+             > /etc/apt/sources.list.d/mongodb-org.list \
+           ;; \
+         arm64) \
+           echo "deb [ arch=arm64 signed-by=/usr/share/keyrings/mongodb-server.gpg ] http://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/${MONGO_ORG_MAJOR} multiverse" \
+             > /etc/apt/sources.list.d/mongodb-org.list \
+           ;; \
          *) echo "unsupported arch for MongoDB tools: $ARCH"; exit 1 ;; \
        esac \
-    && cd /tmp \
-    && curl -fsSL "https://fastdl.mongodb.org/tools/db/mongodb-database-tools-${PLATFORM}-${MONGO_TOOLS_VERSION}.tgz" \
-       | tar xz \
-    && mv mongodb-database-tools-*/bin/* /usr/local/bin/ \
-    && rm -rf mongodb-database-tools-* \
-    && mongodump --version
-
-# mongosh (better MongoDB test_connection than TCP-only).
-ARG MONGOSH_VERSION=2.3.9
-RUN set -eux \
-    && ARCH="$(dpkg --print-architecture)" \
-    && case "$ARCH" in \
-         amd64) MS_ARCH=x64 ;; \
-         arm64) MS_ARCH=arm64 ;; \
-         *) echo "unsupported arch for mongosh: $ARCH"; exit 1 ;; \
-       esac \
-    && cd /tmp \
-    && curl -fsSL \
-       "https://downloads.mongodb.com/compass/mongosh-${MONGOSH_VERSION}-linux-${MS_ARCH}.tgz" \
-       | tar xz \
-    && mv "mongosh-${MONGOSH_VERSION}-linux-${MS_ARCH}/bin/mongosh" /usr/local/bin/mongosh \
-    && chmod +x /usr/local/bin/mongosh \
-    && rm -rf "/tmp/mongosh-${MONGOSH_VERSION}-linux-${MS_ARCH}" \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends mongodb-database-tools mongodb-mongosh \
+    && rm -rf /var/lib/apt/lists/* \
+    && mongodump --version \
     && mongosh --version
 
 COPY server/requirements.txt /app/requirements.txt
