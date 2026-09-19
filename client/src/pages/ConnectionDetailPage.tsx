@@ -19,6 +19,7 @@ export function ConnectionDetailPage() {
   const [busy, setBusy] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
   const [shareOpen, setShareOpen] = useState(false)
+  const [compress, setCompress] = useState(false)
 
   useEffect(() => {
     if (!id) return
@@ -41,7 +42,7 @@ export function ConnectionDetailPage() {
     setBusy(true)
     setError(null)
     try {
-      const { blob, filename } = await triggerBackupDownload(Number(id))
+      const { blob, filename } = await triggerBackupDownload(Number(id), { compress })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
@@ -163,6 +164,16 @@ export function ConnectionDetailPage() {
             <Pencil className="mr-2 size-4" />
             Edit
           </Button>
+          <label className="flex items-center gap-2 text-sm" title="Also copies the dump to every storage destination on your account">
+            <input
+              type="checkbox"
+              className="size-4 rounded"
+              checked={compress}
+              disabled={busy || row.access_role === 'viewer'}
+              onChange={(e) => setCompress(e.target.checked)}
+            />
+            Compress (gzip)
+          </label>
           <Button
             size="sm"
             disabled={busy || row.access_role === 'viewer'}

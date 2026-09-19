@@ -10,9 +10,12 @@ from django.db import connections
 from django.utils import timezone
 from django.utils.text import slugify
 
+from backups.compression import gzip_if_requested
 from backups.models import BackupRecord
 from dbs import backup as dbs_backup
 from dbs import test_connection as dbs_test
+from storage.models import StorageDestination
+from storage.transfer import StorageTransferError, upload_backup_file
 
 from .models import DatabaseConnection
 
@@ -35,14 +38,39 @@ def connection_to_params(connection: DatabaseConnection) -> dict:
     return params
 
 
+def _fanout_backup_to_storages(user_id: int, local_path: Path, filename: str) -> list[dict]:
+    """Copy the dump to every storage destination owned by ``user_id``."""
+    results: list[dict] = []
+    dests = StorageDestination.objects.filter(user_id=user_id).order_by('id')
+    for dest in dests:
+        entry: dict = {
+            'id': dest.pk,
+            'name': dest.name,
+            'kind': dest.kind,
+            'ok': False,
+        }
+        try:
+            entry['remote'] = upload_backup_file(dest, local_path, filename)
+            entry['ok'] = True
+        except (StorageTransferError, OSError) as e:
+            entry['error'] = str(e)[:800]
+        results.append(entry)
+    return results
+
+
 def perform_backup(
     connection: DatabaseConnection,
     *,
     trigger: str | None = None,
     initiated_by=None,
+    compress: bool = False,
 ) -> tuple[Path, str]:
     """
     Run logical backup for this saved connection; write under ``MEDIA_ROOT/db_exports/<user_id>/``.
+
+    After a successful dump, the file is copied to every ``StorageDestination`` belonging
+    to the connection owner. ``compress`` gzip-encodes the artifact first (skipped for
+    formats that are already packed, e.g. ``.zip``).
 
     Logs a :class:`backups.models.BackupRecord` row (success or failure).
 
@@ -98,6 +126,11 @@ def perform_backup(
             dbs_backup(engine, params, dest=out_path)
             path, filename = out_path, out_path.name
 
+        path = gzip_if_requested(path, compress)
+        filename = path.name
+        was_gzipped = path.suffix.lower() == '.gz'
+        storage_uploads = _fanout_backup_to_storages(connection.user_id, path, filename)
+
         abs_path = path.resolve()
         rel = abs_path.relative_to(media_root)
         record = BackupRecord.objects.get(pk=record_id)
@@ -105,6 +138,8 @@ def perform_backup(
         record.relative_media_path = rel.as_posix()
         record.download_filename = filename
         record.size_bytes = path.stat().st_size
+        record.compressed = was_gzipped
+        record.storage_uploads = storage_uploads
         record.finished_at = timezone.now()
         record.save(
             update_fields=[
@@ -112,6 +147,8 @@ def perform_backup(
                 'relative_media_path',
                 'download_filename',
                 'size_bytes',
+                'compressed',
+                'storage_uploads',
                 'finished_at',
                 'updated_at',
             ]
@@ -119,13 +156,27 @@ def perform_backup(
         from baxconf.alertlog import log_alert
 
         kind = 'Scheduled backup' if trigger == BackupRecord.Trigger.SCHEDULED else 'Backup'
+        failed_uploads = [u for u in storage_uploads if not u.get('ok')]
+        ok_uploads = len(storage_uploads) - len(failed_uploads)
+        storage_note = ''
+        if storage_uploads:
+            storage_note = f'; uploaded to {ok_uploads}/{len(storage_uploads)} storage destination(s)'
         log_alert(
-            f'{kind} of “{connection.name}” completed ({filename}, {record.size_bytes} bytes).',
+            f'{kind} of “{connection.name}” completed ({filename}, {record.size_bytes} bytes{storage_note}).',
             status='success',
             source='backup',
             connection_id=connection.pk,
             backup_id=record.pk,
         )
+        if failed_uploads:
+            names = ', '.join(str(u.get('name') or u.get('id')) for u in failed_uploads)
+            log_alert(
+                f'Backup of “{connection.name}” could not be copied to: {names}.',
+                status='warning',
+                source='backup',
+                connection_id=connection.pk,
+                backup_id=record.pk,
+            )
         return path, filename
     except Exception as e:
         record = BackupRecord.objects.get(pk=record_id)

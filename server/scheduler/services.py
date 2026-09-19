@@ -85,8 +85,12 @@ def _claim_due_job(job_id: int) -> tuple[ScheduledJob, dict[str, Any], Task | No
         if job.task_key == 'backup_saved_connection':
             from backups.models import BackupRecord
 
-            kwargs['owner_user_id'] = job.run_as_id
             cid = kwargs.get('connection_id') or (job.payload or {}).get('connection_id')
+            kwargs = {
+                'connection_id': cid,
+                'owner_user_id': job.run_as_id,
+                'compress': bool((job.payload or {}).get('compress', False)),
+            }
             if cid:
                 stale_before = timezone.now() - timedelta(minutes=45)
                 stale_qs = BackupRecord.objects.filter(

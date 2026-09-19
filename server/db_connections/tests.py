@@ -120,3 +120,89 @@ class BackupRestoreLogTests(TestCase):
                     with self.assertLogs('baxauto.alert', level='INFO') as cm:
                         perform_restore(backup=backup, initiated_by=self.user, restore_kwargs={})
         self.assertTrue(_has(cm.output, 'status=success', 'source=restore', 'completed'))
+
+    def test_backup_gzip_and_uploads_to_all_destinations(self):
+        from storage.models import StorageDestination
+
+        StorageDestination.objects.create(
+            user=self.user,
+            name='minio',
+            kind=StorageDestination.Kind.S3,
+            bucket='backups',
+            username='ak',
+            secret='sk',
+        )
+        StorageDestination.objects.create(
+            user=self.user,
+            name='sftp-offsite',
+            kind=StorageDestination.Kind.SFTP,
+            host='sftp.example.com',
+            username='bax',
+            secret='pw',
+            remote_path='/dumps',
+        )
+        other = User.objects.create_user('other', password='secret12xx')
+        StorageDestination.objects.create(
+            user=other,
+            name='not-mine',
+            kind=StorageDestination.Kind.S3,
+            bucket='other',
+            username='ak',
+            secret='sk',
+        )
+
+        def fake_backup(_engine, _params, dest, **_kwargs):
+            path = Path(dest)
+            path.write_bytes(b'dump-bytes-here')
+            return path
+
+        uploaded = []
+
+        def fake_upload(dest, local_path, filename):
+            uploaded.append((dest.name, filename, Path(local_path).read_bytes()[:2]))
+            return f'remote/{filename}'
+
+        with TemporaryDirectory() as tmp:
+            with override_settings(MEDIA_ROOT=tmp):
+                with patch('db_connections.services.dbs_backup', side_effect=fake_backup):
+                    with patch('db_connections.services.upload_backup_file', side_effect=fake_upload):
+                        path, filename = perform_backup(self.conn, initiated_by=self.user, compress=True)
+
+        self.assertTrue(filename.endswith('.gz'))
+        self.assertTrue(path.is_file())
+        names = [n for n, _fn, _magic in uploaded]
+        self.assertEqual(names, ['minio', 'sftp-offsite'])
+        rec = BackupRecord.objects.get(status=BackupRecord.Status.SUCCESS)
+        self.assertTrue(rec.compressed)
+        self.assertEqual(len(rec.storage_uploads), 2)
+        self.assertTrue(all(u['ok'] for u in rec.storage_uploads))
+
+    def test_restore_gzipped_dump(self):
+        import gzip
+
+        with TemporaryDirectory() as tmp:
+            media = Path(tmp)
+            artifact = media / 'db_exports' / 'x.dump.gz'
+            artifact.parent.mkdir(parents=True)
+            with gzip.open(artifact, 'wb') as fh:
+                fh.write(b'dump-bytes')
+            backup = BackupRecord.objects.create(
+                connection=self.conn,
+                initiated_by=self.user,
+                status=BackupRecord.Status.SUCCESS,
+                engine=self.conn.engine,
+                relative_media_path='db_exports/x.dump.gz',
+                download_filename='x.dump.gz',
+                size_bytes=10,
+                compressed=True,
+            )
+            seen: dict[str, bytes] = {}
+
+            def fake_restore(*_args, **kwargs):
+                seen['bytes'] = Path(kwargs['src']).read_bytes()
+
+            with override_settings(MEDIA_ROOT=tmp):
+                with patch('backups.services.dbs_restore', side_effect=fake_restore):
+                    with self.assertLogs('baxauto.alert', level='INFO'):
+                        perform_restore(backup=backup, initiated_by=self.user, restore_kwargs={})
+            self.assertEqual(seen['bytes'], b'dump-bytes')

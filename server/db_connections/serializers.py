@@ -97,3 +97,7 @@ class ConnectionShareReadSerializer(serializers.ModelSerializer):
 class ConnectionShareWriteSerializer(serializers.Serializer):
     user = serializers.PrimaryKeyRelatedField(queryset=User.objects.filter(is_active=True))
     role = serializers.ChoiceField(choices=DatabaseConnectionShare.Role.choices, default=DatabaseConnectionShare.Role.VIEWER)
+
+
+class BackupRequestSerializer(serializers.Serializer):
+    compress = serializers.BooleanField(required=False, default=False)

@@ -14,6 +14,7 @@ from dbs.base import BackupRestoreError
 from .access import connection_access_role, connections_visible_q
 from .models import DatabaseConnection, DatabaseConnectionShare
 from .serializers import (
+    BackupRequestSerializer,
     ConnectionShareReadSerializer,
     ConnectionShareWriteSerializer,
     DatabaseConnectionSerializer,
@@ -98,13 +99,16 @@ class DatabaseConnectionViewSet(viewsets.ModelViewSet):
         )
         return Response({'ok': True})
 
-    @extend_schema(request=None, responses={200: None})
+    @extend_schema(request=BackupRequestSerializer, responses={200: None})
     @action(detail=True, methods=['post'])
     def backup(self, request, pk=None):
         conn = self.get_object()
         self._require_not_viewer_share(conn)
+        req = BackupRequestSerializer(data=request.data or {})
+        req.is_valid(raise_exception=True)
+        compress = bool(req.validated_data.get('compress'))
         try:
-            path, filename = perform_backup(conn, initiated_by=request.user)
+            path, filename = perform_backup(conn, initiated_by=request.user, compress=compress)
         except BackupRestoreError as e:
             return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
         except ValueError as e:

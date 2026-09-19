@@ -48,7 +48,7 @@ class StorageDestination(models.Model):
         max_length=512,
         blank=True,
         default='',
-        help_text='Remote directory prefix for SFTP/FTP uploads.',
+        help_text='Directory or object-key prefix for uploads (S3/SFTP/FTP).',
     )
 
     ftp_passive = models.BooleanField(default=True)

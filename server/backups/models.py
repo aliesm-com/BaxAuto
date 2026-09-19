@@ -40,6 +40,15 @@ class BackupRecord(models.Model):
     )
     download_filename = models.CharField(max_length=255, blank=True, default='')
     size_bytes = models.PositiveBigIntegerField(null=True, blank=True)
+    compressed = models.BooleanField(
+        default=False,
+        help_text='True when the stored artifact is gzip (.gz).',
+    )
+    storage_uploads = models.JSONField(
+        default=list,
+        blank=True,
+        help_text='Per-destination upload results (id, name, kind, ok, remote/error).',
+    )
     error_message = models.TextField(blank=True, default='')
 
     created_at = models.DateTimeField(auto_now_add=True)

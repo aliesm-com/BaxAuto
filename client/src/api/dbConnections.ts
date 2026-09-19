@@ -105,8 +105,14 @@ export async function removeConnectionShare(connectionId: number, memberUserId: 
   if (!res.ok) throw new Error(await res.text())
 }
 
-export async function triggerBackupDownload(connectionId: number): Promise<{ blob: Blob; filename: string }> {
-  const res = await apiFetch(`/api/db-connections/${connectionId}/backup/`, { method: 'POST' })
+export async function triggerBackupDownload(
+  connectionId: number,
+  opts?: { compress?: boolean },
+): Promise<{ blob: Blob; filename: string }> {
+  const res = await apiFetch(`/api/db-connections/${connectionId}/backup/`, {
+    method: 'POST',
+    body: JSON.stringify({ compress: Boolean(opts?.compress) }),
+  })
   if (!res.ok) {
     const t = await res.text()
     throw new Error(t || `Backup failed (${res.status})`)

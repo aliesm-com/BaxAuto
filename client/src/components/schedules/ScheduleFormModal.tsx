@@ -40,6 +40,7 @@ export function ScheduleFormModal({ open, onOpenChange, jobId, onSaved }: Schedu
   const [taskKey, setTaskKey] = useState<string>('backup_saved_connection')
   const [payloadText, setPayloadText] = useState('{}')
   const [selectedConnectionId, setSelectedConnectionId] = useState<number | ''>('')
+  const [compress, setCompress] = useState(false)
   const [connections, setConnections] = useState<DatabaseConnectionDTO[]>([])
   const [connectionsLoading, setConnectionsLoading] = useState(false)
   const [connectionsError, setConnectionsError] = useState<string | null>(null)
@@ -63,6 +64,7 @@ export function ScheduleFormModal({ open, onOpenChange, jobId, onSaved }: Schedu
       setTaskKey('backup_saved_connection')
       setPayloadText('{}')
       setSelectedConnectionId('')
+      setCompress(false)
       setRunAsText('')
       setLoadingJob(false)
       return
@@ -83,13 +85,16 @@ export function ScheduleFormModal({ open, onOpenChange, jobId, onSaved }: Schedu
         const cid = j.payload?.connection_id
         if (j.task_key === 'backup_saved_connection' && typeof cid === 'number' && Number.isInteger(cid)) {
           setSelectedConnectionId(cid)
+          setCompress(Boolean(j.payload?.compress))
           setPayloadText('{}')
         } else if (j.task_key === 'noop') {
           setSelectedConnectionId('')
+          setCompress(false)
           setPayloadText(JSON.stringify(j.payload ?? {}, null, 2))
         } else {
           setPayloadText(JSON.stringify(j.payload ?? {}, null, 2))
           setSelectedConnectionId('')
+          setCompress(false)
         }
         setRunAsText(j.run_as != null ? String(j.run_as) : '')
       } catch (e) {
@@ -153,7 +158,7 @@ export function ScheduleFormModal({ open, onOpenChange, jobId, onSaved }: Schedu
         return
       }
       const cid = selectedConnectionId
-      payload = { connection_id: cid }
+      payload = { connection_id: cid, compress }
     } else {
       try {
         payload = JSON.parse(payloadText || '{}') as Record<string, unknown>
@@ -336,6 +341,18 @@ export function ScheduleFormModal({ open, onOpenChange, jobId, onSaved }: Schedu
                     <p className="text-xs text-muted-foreground">No connections returned for your account. Add one under Databases.</p>
                   ) : null}
                 </div>
+                <label className="flex cursor-pointer items-center gap-2">
+                  <input
+                    type="checkbox"
+                    className="size-4 rounded"
+                    checked={compress}
+                    onChange={(e) => setCompress(e.target.checked)}
+                  />
+                  <span className="text-sm font-medium">Store compressed (gzip)</span>
+                </label>
+                <p className="text-xs text-muted-foreground">
+                  Each run is copied to every storage destination on the connection owner&apos;s account.
+                </p>
                 <div className="space-y-1">
                   <Label>Run as (connection owner)</Label>
                   <p className="font-mono text-sm text-foreground">{runAsText || '—'}</p>

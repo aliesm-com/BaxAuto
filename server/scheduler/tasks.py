@@ -22,7 +22,7 @@ def noop_task() -> str:
 
 
 @task
-def backup_saved_connection(connection_id: int, owner_user_id: int) -> str:
+def backup_saved_connection(connection_id: int, owner_user_id: int, compress: bool = False) -> str:
     """
     Run :func:`db_connections.services.perform_backup` for a connection row.
 
@@ -30,7 +30,11 @@ def backup_saved_connection(connection_id: int, owner_user_id: int) -> str:
     stay scoped to that user's saved connections.
     """
     conn = DatabaseConnection.objects.get(pk=connection_id, user_id=owner_user_id)
-    path, _name = perform_backup(conn, trigger=BackupRecord.Trigger.SCHEDULED)
+    path, _name = perform_backup(
+        conn,
+        trigger=BackupRecord.Trigger.SCHEDULED,
+        compress=bool(compress),
+    )
     return str(path)
 
 

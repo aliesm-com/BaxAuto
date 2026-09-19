@@ -112,7 +112,7 @@ export function StorageFormModal({ open, onOpenChange, destinationId, onSaved }:
       bucket: kind === 's3' ? form.bucket.trim() : '',
       region: kind === 's3' ? form.region.trim() : '',
       endpoint_url: kind === 's3' ? form.endpoint_url.trim() : '',
-      remote_path: kind !== 's3' ? form.remote_path.trim() : '',
+      remote_path: form.remote_path.trim(),
       ftp_passive: kind === 'ftp' ? form.ftp_passive : true,
       ftp_use_tls: kind === 'ftp' ? form.ftp_use_tls : false,
     }
@@ -265,6 +265,15 @@ export function StorageFormModal({ open, onOpenChange, destinationId, onSaved }:
                   <div className="space-y-2">
                     <Label htmlFor="stor-sk">{isEdit ? 'Secret key (leave blank to keep)' : 'Secret access key'}</Label>
                     <Input id="stor-sk" type="password" value={form.secret} onChange={(e) => setForm((f) => ({ ...f, secret: e.target.value }))} autoComplete="new-password" />
+                  </div>
+                  <div className="space-y-2 sm:col-span-2">
+                    <Label htmlFor="stor-s3-prefix">Object prefix (optional)</Label>
+                    <Input
+                      id="stor-s3-prefix"
+                      value={form.remote_path}
+                      onChange={(e) => setForm((f) => ({ ...f, remote_path: e.target.value }))}
+                      placeholder="backups/baxauto"
+                    />
                   </div>
                 </>
               ) : (

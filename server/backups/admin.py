@@ -12,11 +12,12 @@ class BackupRecordAdmin(admin.ModelAdmin):
         'status',
         'engine',
         'download_filename',
+        'compressed',
         'size_bytes',
         'created_at',
         'finished_at',
     )
-    list_filter = ('status', 'trigger', 'engine')
+    list_filter = ('status', 'trigger', 'engine', 'compressed')
     search_fields = ('relative_media_path', 'download_filename', 'error_message')
     readonly_fields = ('created_at', 'updated_at', 'finished_at')
 

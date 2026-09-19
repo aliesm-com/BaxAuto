@@ -47,6 +47,8 @@ class BackupRecordSerializer(serializers.ModelSerializer):
             'relative_media_path',
             'download_filename',
             'size_bytes',
+            'compressed',
+            'storage_uploads',
             'error_message',
             'created_at',
             'finished_at',

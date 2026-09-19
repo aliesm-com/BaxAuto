@@ -111,6 +111,8 @@ class ScheduledJob(models.Model):
                 raise ValidationError({'payload': 'Include {"connection_id": <int>} in payload.'})
             if not isinstance(cid, int):
                 raise ValidationError({'payload': 'connection_id must be an integer.'})
+            if 'compress' in self.payload and self.payload.get('compress') not in (True, False):
+                raise ValidationError({'payload': 'compress must be true or false when set.'})
 
             try:
                 DatabaseConnection.objects.get(pk=cid, user_id=self.run_as_id)

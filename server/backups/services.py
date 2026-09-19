@@ -11,6 +11,7 @@ from dbs.base import BackupRestoreError
 
 from db_connections.services import connection_to_params
 
+from .compression import gunzip_to_temp, looks_gzipped
 from .models import BackupRecord, RestoreRecord
 
 
@@ -79,6 +80,15 @@ def perform_restore(
     if not path.is_file():
         raise BackupRestoreError(f'Backup file missing on disk: {backup.relative_media_path}')
 
+    unpacked: Path | None = None
+    src = path
+    if looks_gzipped(path, bool(backup.compressed)):
+        try:
+            unpacked = gunzip_to_temp(path)
+            src = unpacked
+        except Exception as e:
+            raise BackupRestoreError(f'Could not decompress gzip backup: {e}') from e
+
     connection = backup.connection
     params = connection_to_params(connection)
     opts = dict(restore_kwargs or {})
@@ -93,7 +103,7 @@ def perform_restore(
     )
 
     try:
-        dbs_restore(backup.engine, params, src=path, **opts)
+        dbs_restore(backup.engine, params, src=src, **opts)
         rr.status = RestoreRecord.Status.SUCCESS
         rr.finished_at = timezone.now()
         rr.save(update_fields=['status', 'finished_at', 'updated_at'])
@@ -126,3 +136,6 @@ def perform_restore(
         if isinstance(e, BackupRestoreError):
             raise
         raise BackupRestoreError(str(e)) from e
+    finally:
+        if unpacked is not None:
+            unpacked.unlink(missing_ok=True)

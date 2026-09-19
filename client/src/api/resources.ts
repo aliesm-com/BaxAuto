@@ -3,6 +3,15 @@ import { apiJson } from './client'
 export type { DatabaseConnectionDTO as DbConnection } from './dbConnections'
 export { listConnections } from './dbConnections'
 
+export interface BackupStorageUpload {
+  id: number
+  name: string
+  kind: string
+  ok: boolean
+  remote?: string
+  error?: string
+}
+
 export interface BackupRecord {
   id: number
   connection: number
@@ -13,6 +22,8 @@ export interface BackupRecord {
   relative_media_path: string
   download_filename: string
   size_bytes: number | null
+  compressed: boolean
+  storage_uploads: BackupStorageUpload[]
   error_message: string
   created_at: string
   finished_at: string | null

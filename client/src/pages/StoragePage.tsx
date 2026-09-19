@@ -13,7 +13,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 function summary(row: StorageDestinationDTO): string {
   if (row.kind === 's3') {
     const ep = row.endpoint_url?.trim()
-    return ep ? `${row.bucket} · ${ep}` : row.bucket || '—'
+    const prefix = row.remote_path?.trim()
+    const parts = [row.bucket || '—', ep, prefix].filter(Boolean)
+    return parts.join(' · ')
   }
   const port = row.port != null ? `:${row.port}` : ''
   const tail = row.remote_path ? `${row.host}${port} · ${row.remote_path}` : `${row.host}${port}`
@@ -121,7 +123,7 @@ export function StoragePage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Storage</h1>
           <p className="text-sm text-muted-foreground">
-            Remote destinations for uploads (S3-compatible, SFTP, FTP). Wiring backups to these targets can follow in a later release.
+            Every successful backup is copied to all destinations listed here (S3-compatible, SFTP, FTP).
           </p>
         </div>
         <Button type="button" className="rounded-full shadow-md" onClick={openCreateModal}>

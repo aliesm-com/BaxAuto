@@ -24,7 +24,9 @@ export function BackupRecordsPage() {
     <div className="space-y-6 p-6 lg:p-8">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Backups</h1>
-        <p className="text-sm text-muted-foreground">Logical backups recorded for your connections.</p>
+        <p className="text-sm text-muted-foreground">
+          Logical backups recorded for your connections. Successful files are also copied to every storage destination you have configured.
+        </p>
       </div>
       {error ? <p className="text-sm text-red-600">{error}</p> : null}
       <Card>
@@ -40,6 +42,7 @@ export function BackupRecordsPage() {
                 <th className="pb-3 pr-4 font-medium">Engine</th>
                 <th className="pb-3 pr-4 font-medium">Trigger</th>
                 <th className="pb-3 pr-4 font-medium">Status</th>
+                <th className="pb-3 pr-4 font-medium">Storage</th>
                 <th className="pb-3 pr-4 font-medium">Finished</th>
                 <th className="pb-3 font-medium text-right">Actions</th>
               </tr>
@@ -51,9 +54,24 @@ export function BackupRecordsPage() {
                   <td className="py-3 pr-4 capitalize">{b.engine}</td>
                   <td className="py-3 pr-4">{b.trigger}</td>
                   <td className="py-3 pr-4">
-                    <Badge variant={b.status === 'success' ? 'success' : b.status === 'failed' ? 'destructive' : 'muted'}>
-                      {b.status}
-                    </Badge>
+                    <div className="flex flex-wrap items-center gap-1">
+                      <Badge variant={b.status === 'success' ? 'success' : b.status === 'failed' ? 'destructive' : 'muted'}>
+                        {b.status}
+                      </Badge>
+                      {b.compressed ? (
+                        <Badge variant="secondary" title={b.download_filename || 'gzip'}>
+                          gzip
+                        </Badge>
+                      ) : null}
+                    </div>
+                  </td>
+                  <td className="py-3 pr-4 text-muted-foreground">
+                    {(() => {
+                      const uploads = b.storage_uploads ?? []
+                      if (!uploads.length) return '—'
+                      const ok = uploads.filter((u) => u.ok).length
+                      return `${ok}/${uploads.length}`
+                    })()}
                   </td>
                   <td className="py-3 pr-4 text-muted-foreground">{b.finished_at ?? '—'}</td>
                   <td className="py-3 text-right">
