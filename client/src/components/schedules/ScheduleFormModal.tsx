@@ -233,7 +233,11 @@ export function ScheduleFormModal({ open, onOpenChange, jobId, onSaved }: Schedu
           <p className="text-sm text-red-600">{loadError}</p>
         ) : (
           <form onSubmit={onSubmit} className="space-y-4">
-            {error ? <p className="text-sm text-red-600">{error}</p> : null}
+            {error ? (
+              <pre className="max-h-48 overflow-auto whitespace-pre-wrap rounded-md border border-red-200 bg-red-50 p-3 text-xs text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
+                {error}
+              </pre>
+            ) : null}
 
             <div className="space-y-2">
               <Label htmlFor="sched-modal-name">Name</Label>

@@ -72,6 +72,13 @@ export async function apiJson<T>(path: string, init: RequestInit = {}): Promise<
       const j = JSON.parse(text) as Record<string, unknown>
       if (typeof j.detail === 'string') {
         detail = j.detail
+        if (typeof j.exception === 'string' && !detail.includes(j.exception)) {
+          detail = `${j.exception}: ${detail}`
+        }
+        if (Array.isArray(j.traceback) && j.traceback.length) {
+          const tail = j.traceback.slice(-8).map(String).join('\n')
+          detail = `${detail}\n${tail}`
+        }
       } else if (Array.isArray(j.detail)) {
         detail = j.detail.map(String).join('; ')
       } else if (j && typeof j === 'object') {
