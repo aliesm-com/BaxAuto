@@ -158,9 +158,9 @@ class BackupRestoreLogTests(TestCase):
 
         uploaded = []
 
-        def fake_upload(dest, local_path, filename):
-            uploaded.append((dest.name, filename, Path(local_path).read_bytes()[:2]))
-            return f'remote/{filename}'
+        def fake_upload(dest, local_path, remote_relative):
+            uploaded.append((dest.name, remote_relative, Path(local_path).read_bytes()[:2]))
+            return f'remote/{remote_relative}'
 
         with TemporaryDirectory() as tmp:
             with override_settings(MEDIA_ROOT=tmp):
@@ -170,12 +170,17 @@ class BackupRestoreLogTests(TestCase):
 
         self.assertTrue(filename.endswith('.gz'))
         self.assertTrue(path.is_file())
-        names = [n for n, _fn, _magic in uploaded]
+        self.assertIn('/manual/', str(path).replace('\\', '/'))
+        names = [n for n, _rel, _magic in uploaded]
         self.assertEqual(names, ['minio', 'sftp-offsite'])
+        for _n, rel, _magic in uploaded:
+            self.assertIn('/manual/', rel.replace('\\', '/'))
+            self.assertTrue(rel.endswith('.gz'))
         rec = BackupRecord.objects.get(status=BackupRecord.Status.SUCCESS)
         self.assertTrue(rec.compressed)
         self.assertEqual(len(rec.storage_uploads), 2)
         self.assertTrue(all(u['ok'] for u in rec.storage_uploads))
+        self.assertIn('/manual/', rec.relative_media_path)
 
     def test_restore_gzipped_dump(self):
         import gzip

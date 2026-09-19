@@ -14,27 +14,31 @@ class StorageTransferError(RuntimeError):
     """Raised when a backup file cannot be written to a destination."""
 
 
-def upload_backup_file(dest: StorageDestination, local_path: Path, filename: str) -> str:
+def upload_backup_file(dest: StorageDestination, local_path: Path, remote_relative: str) -> str:
     """
-    Copy ``local_path`` to ``dest`` as ``filename``.
+    Copy ``local_path`` to ``dest`` under ``remote_relative``.
 
-    Returns the remote key/path that was written.
+    ``remote_relative`` is joined under ``dest.remote_path`` (e.g.
+    ``my-db/manual/dump.sql.gz``). Returns the remote key/path that was written.
     """
     if dest.kind == dest.Kind.S3:
-        return _upload_s3(dest, local_path, filename)
+        return _upload_s3(dest, local_path, remote_relative)
     if dest.kind == dest.Kind.SFTP:
-        return _upload_sftp(dest, local_path, filename)
+        return _upload_sftp(dest, local_path, remote_relative)
     if dest.kind == dest.Kind.FTP:
-        return _upload_ftp(dest, local_path, filename)
+        return _upload_ftp(dest, local_path, remote_relative)
     raise StorageTransferError(f'Unsupported storage kind: {dest.kind}')
 
 
-def _remote_key(dest: StorageDestination, filename: str) -> str:
+def _remote_key(dest: StorageDestination, remote_relative: str) -> str:
     prefix = (dest.remote_path or '').strip().replace('\\', '/').strip('/')
-    return f'{prefix}/{filename}' if prefix else filename
+    rel = (remote_relative or '').strip().replace('\\', '/').strip('/')
+    if not rel:
+        raise StorageTransferError('Remote relative path is empty.')
+    return f'{prefix}/{rel}' if prefix else rel
 
 
-def _upload_s3(dest: StorageDestination, local_path: Path, filename: str) -> str:
+def _upload_s3(dest: StorageDestination, local_path: Path, remote_relative: str) -> str:
     try:
         import boto3
         from botocore.config import Config
@@ -69,7 +73,7 @@ def _upload_s3(dest: StorageDestination, local_path: Path, filename: str) -> str
     if endpoint:
         kw['endpoint_url'] = endpoint
 
-    key = _remote_key(dest, filename)
+    key = _remote_key(dest, remote_relative)
     client = boto3.client('s3', **kw)
     try:
         client.upload_file(str(local_path), bucket, key)
@@ -97,7 +101,7 @@ def _sftp_makedirs(sftp, remote_dir: str) -> None:
             sftp.mkdir(acc)
 
 
-def _upload_sftp(dest: StorageDestination, local_path: Path, filename: str) -> str:
+def _upload_sftp(dest: StorageDestination, local_path: Path, remote_relative: str) -> str:
     try:
         import paramiko
     except ImportError as e:
@@ -107,7 +111,7 @@ def _upload_sftp(dest: StorageDestination, local_path: Path, filename: str) -> s
     user = (dest.username or '').strip()
     if not host or not user:
         raise StorageTransferError('Host and username are required for SFTP.')
-    remote = _remote_key(dest, filename)
+    remote = _remote_key(dest, remote_relative)
     client = paramiko.SSHClient()
     client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     try:
@@ -148,12 +152,12 @@ def _ftp_makedirs(ftp: FTP, remote_dir: str) -> None:
             pass
 
 
-def _upload_ftp(dest: StorageDestination, local_path: Path, filename: str) -> str:
+def _upload_ftp(dest: StorageDestination, local_path: Path, remote_relative: str) -> str:
     host = (dest.host or '').strip()
     user = (dest.username or '').strip()
     if not host or not user:
         raise StorageTransferError('Host and username are required for FTP.')
-    remote = _remote_key(dest, filename)
+    remote = _remote_key(dest, remote_relative)
     timeout = 1800
     ftp: FTP
     try:

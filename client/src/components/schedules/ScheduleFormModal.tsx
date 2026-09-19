@@ -351,7 +351,9 @@ export function ScheduleFormModal({ open, onOpenChange, jobId, onSaved }: Schedu
                   <span className="text-sm font-medium">Store compressed (gzip)</span>
                 </label>
                 <p className="text-xs text-muted-foreground">
-                  Each run is copied to every storage destination on the connection owner&apos;s account.
+                  Each run is copied to every storage destination as{' '}
+                  <span className="font-mono">{'{db}/{schedule-id-name}/file'}</span>. Manual backups use a{' '}
+                  <span className="font-mono">manual</span> folder under the database name.
                 </p>
                 <div className="space-y-1">
                   <Label>Run as (connection owner)</Label>

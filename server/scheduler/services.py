@@ -90,6 +90,8 @@ def _claim_due_job(job_id: int) -> tuple[ScheduledJob, dict[str, Any], Task | No
                 'connection_id': cid,
                 'owner_user_id': job.run_as_id,
                 'compress': bool((job.payload or {}).get('compress', False)),
+                'schedule_job_id': job.pk,
+                'schedule_job_name': job.name,
             }
             if cid:
                 stale_before = timezone.now() - timedelta(minutes=45)
