@@ -1,0 +1,40 @@
+# Git
+.git
+.gitignore
+
+# Frontend (built with their own compose contexts)
+client
+landing
+
+# Python
+**/__pycache__/
+**/*.py[cod]
+**/.venv/
+**/venv/
+**/env/
+**/*.egg-info/
+
+# Django runtime
+**/db.sqlite3
+**/db.sqlite3-journal
+server/media/
+server/staticfiles/
+server/static/
+
+# Environment / secrets
+.env
+**/.env
+!.env.example
+!**/.env.example
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Docs / tests
+*.md
+.pytest_cache/
+.coverage
+htmlcov/

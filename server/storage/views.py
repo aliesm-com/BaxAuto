@@ -21,7 +21,6 @@ class StorageDestinationViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         return StorageDestination.objects.filter(user=self.request.user)
 
-<<<<<<< HEAD
     def perform_create(self, serializer):
         serializer.save()
         dest = serializer.instance
@@ -51,7 +50,7 @@ class StorageDestinationViewSet(viewsets.ModelViewSet):
             source='storage',
             storage_id=pk,
         )
-=======
+
     @extend_schema(request=None, responses={200: dict})
     @action(detail=True, methods=['post'])
     def test(self, request, pk=None):
@@ -63,4 +62,3 @@ class StorageDestinationViewSet(viewsets.ModelViewSet):
         except Exception as e:
             return Response({'ok': False, 'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
         return Response({'ok': True})
->>>>>>> 867afaa92e0bc66c9969a021a447ce7a1dc0f61c

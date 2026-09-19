@@ -1,0 +1,127 @@
+name: baxauto
+
+services:
+  # ─────────────────────────────────────────
+  #  BaxAuto Postgres — catalog (users, jobs, connections)
+  # ─────────────────────────────────────────
+  baxauto-postgres:
+    image: postgres:16-alpine
+    container_name: baxauto-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-baxauto}
+      POSTGRES_USER: ${POSTGRES_USER:-baxauto}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-baxauto}
+    volumes:
+      - baxauto_pgdata:/var/lib/postgresql/data
+    ports:
+      - "${HOST_IP:-127.0.0.1}:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-baxauto} -d ${POSTGRES_DB:-baxauto}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - devopsio
+
+  # ─────────────────────────────────────────
+  #  BaxAuto API — Django + dump/restore client tools
+  # ─────────────────────────────────────────
+  baxauto-api:
+    image: baxauto-api:latest
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: baxauto-api
+    entrypoint: ["/bin/sh", "/entrypoint.sh"]
+    volumes:
+      - ../server:/app
+      - baxauto_logs:/logs
+    ports:
+      - "${HOST_IP:-127.0.0.1}:8000:8000"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    env_file:
+      - ../.env
+    environment:
+      - TZ=Asia/Tehran
+      - TIME_ZONE=Asia/Tehran
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-baxauto}:${POSTGRES_PASSWORD:-baxauto}@baxauto-postgres:5432/${POSTGRES_DB:-baxauto}
+      - LOGS_DIR=/logs
+    depends_on:
+      baxauto-postgres:
+        condition: service_healthy
+    networks:
+      - devopsio
+
+  # ─────────────────────────────────────────
+  #  BaxAuto Dashboard — React control plane (nginx → API)
+  # ─────────────────────────────────────────
+  baxauto-dashboard:
+    build:
+      context: ../client
+      dockerfile: Dockerfile
+    container_name: baxauto-dashboard
+    ports:
+      - "${HOST_IP:-127.0.0.1}:8080:80"
+    volumes:
+      - ../client/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - baxauto-api
+    networks:
+      - devopsio
+
+  # ─────────────────────────────────────────
+  #  BaxAuto Landing — Astro marketing site
+  # ─────────────────────────────────────────
+  baxauto-landing:
+    build:
+      context: ../landing
+      dockerfile: Dockerfile
+    container_name: baxauto-landing
+    ports:
+      - "${HOST_IP:-127.0.0.1}:4173:80"
+    volumes:
+      - ../landing/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    networks:
+      - devopsio
+
+  # ─────────────────────────────────────────
+  #  BaxAuto Scheduler — ticks saved backup/restore jobs
+  # ─────────────────────────────────────────
+  baxauto-scheduler:
+    image: baxauto-api:latest
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: baxauto-scheduler
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - sleep 8 && while true; do python manage.py scheduler_tick; sleep 60; done
+    volumes:
+      - ../server:/app
+    env_file:
+      - ../.env
+    environment:
+      - TZ=Asia/Tehran
+      - TIME_ZONE=Asia/Tehran
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-baxauto}:${POSTGRES_PASSWORD:-baxauto}@baxauto-postgres:5432/${POSTGRES_DB:-baxauto}
+    depends_on:
+      baxauto-postgres:
+        condition: service_healthy
+      baxauto-api:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - devopsio
+
+volumes:
+  baxauto_pgdata:
+  baxauto_logs:
+
+networks:
+  devopsio:
+    name: devopsio
+    external: true

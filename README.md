@@ -21,14 +21,16 @@ Backups are the kind of thing that should feel boring at 3 AM: predictable runs,
 | **`server/`** | Django project (`baxconf`), JWT auth, REST API, backup & scheduler logic |
 | **`client/`** | SPA dashboard — connects to `/api` (proxied in dev & Docker) |
 | **`landing/`** | Static marketing site (Astro + Tailwind) |
-| **`docker-compose.yml`** | API + dashboard (`web`) + optional marketing site (`landing`) |
+| **`docker/`** | Compose files, API image, entrypoints |
+| **`start.sh`** | Bring the stack up/down (`dev`/`prod`, bind address) |
 
 ```text
 BaxAuto/
 ├── server/          # Django API (manage.py lives here)
 ├── client/          # React dashboard (Vite dev server)
 ├── landing/         # Astro landing (optional)
-├── docker-compose.yml
+├── docker/          # Compose + API Dockerfile + entrypoints
+├── start.sh
 └── LICENSE          # GPL-3.0
 ```
 
@@ -50,27 +52,29 @@ From the repository root:
 1. **Copy environment templates**
 
    ```bash
-   cp server/.env.example server/.env
+   cp .env.example .env
    ```
 
-   Edit `server/.env` — at minimum set `SECRET_KEY` before anything public-facing (see [Configuration](#configuration)).
+   Edit `.env` — at minimum set `SECRET_KEY` before anything public-facing (see [Configuration](#configuration)). `./start.sh` copies `.env.example` automatically if `.env` is missing.
 
 2. **Bring stacks up**
 
    ```bash
-   docker compose up --build
+   ./start.sh --profile dev --network local --action up
    ```
+
+   Other bind modes: `--network full` (`0.0.0.0`) or `--network netbird`. Production: `--profile prod`. Stop with `--action down`.
 
 3. **Open the apps**
 
    | URL | What |
    |-----|------|
-   | [http://localhost:8080](http://localhost:8080) | React UI (nginx proxies `/api` → Django) |
-   | [http://localhost:4173](http://localhost:4173) | Marketing / landing (static Astro) |
-   | [http://localhost:8000](http://localhost:8000) | Django API directly |
-   | [http://localhost:8000/admin/](http://localhost:8000/admin/) | Django admin (via API port; nginx also proxies `/admin/` on 8080) |
+   | [http://localhost:8080](http://localhost:8080) | BaxAuto dashboard (nginx proxies `/api` → API) |
+   | [http://localhost:4173](http://localhost:4173) | BaxAuto landing (static Astro) |
+   | [http://localhost:8000](http://localhost:8000) | BaxAuto API directly |
+   | [http://localhost:8080/admin/](http://localhost:8080/admin/) | Django admin (also on API port 8000) |
 
-The API container runs migrations on start, then `runserver`. The API image ships **PostgreSQL/MySQL clients**, **Redis CLI**, **MongoDB tools**, **SQL Server ODBC + sqlcmd + SqlPackage**, and more — so backup commands work without installing toolchains on your laptop.
+The API container runs migrations on start, then `runserver` (Gunicorn in `--profile prod`). Compose also starts **BaxAuto Postgres** for the app catalog. The API image ships **PostgreSQL/MySQL clients**, **Redis CLI**, **MongoDB tools**, **SQL Server ODBC + sqlcmd + SqlPackage**, and more — so backup commands work without installing toolchains on your laptop.
 
 ---
 
@@ -125,14 +129,15 @@ Build static output with `npm run build` → `landing/dist/`. With Docker Compos
 
 ## Configuration
 
-Settings load from **`server/.env`** when present (see `baxconf/settings.py`).
+Settings load from **`.env`** at the repo root when using Docker (`./start.sh` / compose `env_file`). For local `runserver` without Docker, copy **`server/.env.example`** to **`server/.env`** (see `baxconf/settings.py`).
 
 | Variable | Purpose |
 |----------|---------|
 | `SECRET_KEY` | **Required in production** — Django signing key |
 | `DEBUG` | `True` / `False` |
 | `ALLOWED_HOSTS` | Comma-separated hostnames |
-| `DATABASE_URL` | PostgreSQL URL; omit for **SQLite** beside `manage.py` |
+| `DATABASE_URL` | PostgreSQL URL; omit for **SQLite** beside `manage.py`. Docker Compose points this at **BaxAuto Postgres** automatically. |
+| `TIME_ZONE` | Django timezone (Docker defaults to `Asia/Tehran`) |
 | `CORS_ALLOWED_ORIGINS` | Browser origins allowed to call the API (e.g. `http://localhost:5173`, `http://localhost:8080`) |
 | `CSRF_TRUSTED_ORIGINS` | Needed behind HTTPS proxies or certain cross-origin POST flows |
 | `DB_CREDENTIALS_FERNET_KEY` | Fernet key for **encrypting saved DB passwords** in `db_connections`. Generate once and keep stable — rotating loses decrypt for old rows |
@@ -163,9 +168,9 @@ To browse **Swagger UI** or **Redoc** in the browser, wire Spectacular’s views
 ## Production-ish hints
 
 - Set **`DEBUG=False`**, strong **`SECRET_KEY`**, real **`ALLOWED_HOSTS`**, and **`CORS_ALLOWED_ORIGINS`** / **`CSRF_TRUSTED_ORIGINS`** to match your frontend origin.
-- Prefer **PostgreSQL** via `DATABASE_URL` for concurrent workloads.
-- The API **`Dockerfile`** default command runs **Gunicorn**; `docker-compose.yml` overrides with **`runserver`** for convenience — swap that for Gunicorn + a reverse proxy when you go live.
-- The **`web`** image builds static assets and serves them with **nginx**, forwarding `/api` and `/admin` to the API service.
+- Prefer **PostgreSQL** via `DATABASE_URL` for concurrent workloads (Compose already runs BaxAuto Postgres).
+- `./start.sh --profile prod` uses **Gunicorn** (`docker/docker-entrypoint.prod.sh`). Dev profile uses Django **`runserver`**.
+- The **BaxAuto dashboard** image builds static assets and serves them with **nginx**, forwarding `/api`, `/admin`, `/static`, and `/media` to the API service.
 
 ---
 
@@ -173,7 +178,9 @@ To browse **Swagger UI** or **Redoc** in the browser, wire Spectacular’s views
 
 | Where | Command | Meaning |
 |-------|---------|---------|
-| Root | `docker compose up --build` | API + dashboard + landing |
+| Root | `./start.sh --profile dev --network local --action up` | BaxAuto API + dashboard + landing + scheduler |
+| Root | `./start.sh --profile prod --network local --action up` | Same stack with Gunicorn |
+| Root | `./start.sh --profile dev --action down` | Stop the stack |
 | `server/` | `python manage.py migrate` | Apply migrations |
 | `server/` | `python manage.py createsuperuser` | Admin login |
 | `client/` | `npm run dev` | Vite dev + API proxy |

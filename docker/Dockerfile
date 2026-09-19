@@ -1,11 +1,12 @@
 # BaxAuto API — DB client binaries so backup/test_connection work without host installs.
-# Base: Debian Bookworm.
+# Base: Debian Bookworm. Build context is the repository root.
 
 FROM python:3.12-slim-bookworm
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1
+    PIP_NO_CACHE_DIR=1 \
+    TZ=Asia/Tehran
 
 WORKDIR /app
 
@@ -39,15 +40,23 @@ RUN apt-get update \
 ENV PATH="${PATH}:/opt/mssql-tools18/bin"
 
 # Microsoft SqlPackage (.bacpac export/import for SQL Server).
+# Official Linux zip is x64; skip on arm64 so Apple Silicon images still build.
 ARG SQLPACKAGE_URL=https://aka.ms/sqlpackage-linux
-RUN curl -fSL "$SQLPACKAGE_URL" -o /tmp/sp.zip \
-    && unzip -q /tmp/sp.zip -d /opt/sqlpackage-root \
-    && SP_BIN="$(find /opt/sqlpackage-root -type f -name sqlpackage | head -1)" \
-    && test -n "$SP_BIN" \
-    && chmod +x "$SP_BIN" \
-    && ln -sf "$SP_BIN" /usr/local/bin/sqlpackage \
-    && rm /tmp/sp.zip \
-    && sqlpackage /version
+RUN set -eux \
+    && ARCH="$(dpkg --print-architecture)" \
+    && case "$ARCH" in \
+         amd64) \
+           curl -fSL "$SQLPACKAGE_URL" -o /tmp/sp.zip \
+           && unzip -q /tmp/sp.zip -d /opt/sqlpackage-root \
+           && SP_BIN="$(find /opt/sqlpackage-root -type f -name sqlpackage | head -1)" \
+           && test -n "$SP_BIN" \
+           && chmod +x "$SP_BIN" \
+           && ln -sf "$SP_BIN" /usr/local/bin/sqlpackage \
+           && rm /tmp/sp.zip \
+           && sqlpackage /version \
+           ;; \
+         *) echo "SqlPackage Linux zip is x64-only; skipping on $ARCH" ;; \
+       esac
 
 # MongoDB Database Tools (mongodump / mongorestore).
 # Debian 12 has no arm64 build; use Ubuntu 22.04 arm64 package there.
@@ -84,14 +93,18 @@ RUN set -eux \
     && rm -rf "/tmp/mongosh-${MONGOSH_VERSION}-linux-${MS_ARCH}" \
     && mongosh --version
 
-COPY requirements.txt .
+COPY server/requirements.txt /app/requirements.txt
 RUN pip install --upgrade pip \
     && pip install -r requirements.txt
 
-COPY . .
+COPY server /app
+
+COPY docker/docker-entrypoint.sh /entrypoint.sh
+COPY docker/docker-entrypoint.prod.sh /entrypoint.prod.sh
+RUN sed -i 's/\r$//' /entrypoint.sh /entrypoint.prod.sh \
+    && chmod +x /entrypoint.sh /entrypoint.prod.sh
 
 EXPOSE 8000
 
-# Default production command (docker-compose overrides with runserver for dev).
-# ClickHouse uses HTTP from Python (no clickhouse-client required). Optional: rabbitmqadmin for RabbitMQ ops.
-CMD ["gunicorn", "baxconf.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "3"]
+# ClickHouse uses HTTP from Python (no clickhouse-client required).
+CMD ["gunicorn", "baxconf.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "3", "--timeout", "1800"]
