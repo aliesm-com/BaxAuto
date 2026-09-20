@@ -9,7 +9,7 @@ from django.utils import timezone
 from dbs import restore as dbs_restore
 from dbs.base import BackupRestoreError
 
-from db_connections.services import connection_to_params
+from db_connections.services import tunneled_connection_params
 
 from .compression import gunzip_to_temp, looks_gzipped
 from .models import BackupRecord, RestoreRecord
@@ -90,7 +90,6 @@ def perform_restore(
             raise BackupRestoreError(f'Could not decompress gzip backup: {e}') from e
 
     connection = backup.connection
-    params = connection_to_params(connection)
     opts = dict(restore_kwargs or {})
 
     rr = RestoreRecord.objects.create(
@@ -103,7 +102,8 @@ def perform_restore(
     )
 
     try:
-        dbs_restore(backup.engine, params, src=src, **opts)
+        with tunneled_connection_params(connection) as params:
+            dbs_restore(backup.engine, params, src=src, **opts)
         rr.status = RestoreRecord.Status.SUCCESS
         rr.finished_at = timezone.now()
         rr.save(update_fields=['status', 'finished_at', 'updated_at'])

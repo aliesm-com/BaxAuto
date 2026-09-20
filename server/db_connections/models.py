@@ -29,7 +29,14 @@ class DatabaseConnection(models.Model):
     )
     engine = models.CharField(max_length=32, choices=Engine.choices)
 
-    host = models.CharField(max_length=255, blank=True)
+    host = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text=(
+            'Database host. With SSH tunnel enabled, this is the address as seen from '
+            'the SSH server (often 127.0.0.1).'
+        ),
+    )
     port = models.PositiveIntegerField(
         null=True,
         blank=True,
@@ -65,6 +72,48 @@ class DatabaseConnection(models.Model):
         help_text='TLS/SSL for the connection where the driver supports it.',
     )
 
+    ssh_enabled = models.BooleanField(
+        default=False,
+        help_text='Open an SSH local port-forward before backup/test/restore.',
+    )
+    ssh_host = models.CharField(
+        max_length=255,
+        blank=True,
+        default='',
+        help_text='SSH bastion / server hostname (public address).',
+    )
+    ssh_port = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        default=22,
+        help_text='SSH port (default 22).',
+    )
+    ssh_username = models.CharField(max_length=255, blank=True, default='')
+    ssh_password = EncryptedTextField(
+        blank=True,
+        default='',
+        help_text='SSH password (optional if a private key is set). Encrypted at rest.',
+    )
+    ssh_private_key = EncryptedTextField(
+        blank=True,
+        default='',
+        help_text='PEM private key for SSH (preferred). Encrypted at rest.',
+    )
+    ssh_private_key_passphrase = EncryptedTextField(
+        blank=True,
+        default='',
+        help_text='Passphrase for the SSH private key, if any. Encrypted at rest.',
+    )
+    ssh_host_key_fingerprint = models.CharField(
+        max_length=128,
+        blank=True,
+        default='',
+        help_text=(
+            'Required when SSH is enabled. SHA256 fingerprint of the server host key '
+            '(from: ssh-keyscan HOST | ssh-keygen -lf -).'
+        ),
+    )
+
     extra_options = models.JSONField(
         default=dict,
         blank=True,
@@ -95,6 +144,33 @@ class DatabaseConnection(models.Model):
         super().clean()
         uri = (self.connection_uri or '').strip()
         host = (self.host or '').strip()
+
+        if self.ssh_enabled:
+            errors: dict[str, str] = {}
+            if not (self.ssh_host or '').strip():
+                errors['ssh_host'] = 'SSH host is required when the tunnel is enabled.'
+            if not (self.ssh_username or '').strip():
+                errors['ssh_username'] = 'SSH username is required when the tunnel is enabled.'
+            if not (self.ssh_host_key_fingerprint or '').strip():
+                errors['ssh_host_key_fingerprint'] = (
+                    'Host key fingerprint is required when the tunnel is enabled.'
+                )
+            has_key = bool((self.ssh_private_key or '').strip())
+            has_pwd = bool((self.ssh_password or '').strip())
+            if not has_key and not has_pwd:
+                errors['ssh_private_key'] = 'Provide an SSH private key or SSH password.'
+            if uri:
+                errors['connection_uri'] = (
+                    'Connection URI cannot be used with an SSH tunnel; use host/port '
+                    '(as seen from the SSH server, e.g. 127.0.0.1).'
+                )
+            if not host:
+                errors['host'] = (
+                    'Database host is required with SSH tunnel '
+                    '(usually 127.0.0.1 on the remote server).'
+                )
+            if errors:
+                raise ValidationError(errors)
 
         if self.engine == self.Engine.MONGODB:
             if not uri and not host:

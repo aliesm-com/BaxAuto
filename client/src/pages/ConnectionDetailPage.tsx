@@ -138,6 +138,7 @@ export function ConnectionDetailPage() {
             </div>
             <p className="text-sm text-muted-foreground">
               {row.host}:{row.port ?? 'default'} · {row.database_name || '—'}
+              {row.ssh_enabled ? ` · SSH via ${row.ssh_host || '—'}` : ''}
             </p>
             {row.access_role !== 'owner' ? (
               <p className="mt-1 text-xs text-muted-foreground">
@@ -213,6 +214,35 @@ export function ConnectionDetailPage() {
               <p className="text-muted-foreground">TLS</p>
               <p className="font-medium">{row.use_tls ? 'Yes' : 'No'}</p>
             </div>
+            <div>
+              <p className="text-muted-foreground">SSH tunnel</p>
+              <p className="font-medium">{row.ssh_enabled ? 'Enabled' : 'Off'}</p>
+            </div>
+            {row.ssh_enabled ? (
+              <>
+                <div>
+                  <p className="text-muted-foreground">SSH host</p>
+                  <p className="font-medium">
+                    {row.ssh_username}@{row.ssh_host}:{row.ssh_port ?? 22}
+                  </p>
+                </div>
+                <div className="sm:col-span-2">
+                  <p className="text-muted-foreground">Host key fingerprint</p>
+                  <p className="break-all font-mono text-xs">{row.ssh_host_key_fingerprint || '—'}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">SSH auth</p>
+                  <p className="font-medium">
+                    {[
+                      row.ssh_private_key_set ? 'private key' : null,
+                      row.ssh_password_set ? 'password' : null,
+                    ]
+                      .filter(Boolean)
+                      .join(' + ') || '—'}
+                  </p>
+                </div>
+              </>
+            ) : null}
             {row.engine === 'rabbitmq' ? (
               <div>
                 <p className="text-muted-foreground">Virtual host</p>

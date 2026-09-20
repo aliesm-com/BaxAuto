@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import shutil
+from contextlib import contextmanager
 from pathlib import Path
+from typing import Iterator
 
 from django.conf import settings
 from django.db import connections
@@ -14,10 +16,16 @@ from backups.compression import gzip_if_requested
 from backups.models import BackupRecord
 from dbs import backup as dbs_backup
 from dbs import test_connection as dbs_test
+from dbs.base import BackupRestoreError, extras_dict
 from storage.models import StorageDestination
 from storage.transfer import StorageTransferError, upload_backup_file
 
 from .models import DatabaseConnection
+from .ssh_tunnel import (
+    EXTRA_ENGINE_PORTS,
+    default_remote_db_port,
+    ssh_local_forwards,
+)
 
 
 def connection_to_params(connection: DatabaseConnection) -> dict:
@@ -36,6 +44,61 @@ def connection_to_params(connection: DatabaseConnection) -> dict:
     if connection.engine == DatabaseConnection.Engine.RABBITMQ:
         extra.setdefault('virtual_host', connection.virtual_host or '/')
     return params
+
+
+@contextmanager
+def tunneled_connection_params(connection: DatabaseConnection) -> Iterator[dict]:
+    """
+    Yield backend params, opening an SSH local forward when ``ssh_enabled``.
+
+    When tunneling, ``host`` becomes ``127.0.0.1`` and ``port`` the local bind.
+    Secondary engine ports (ClickHouse HTTP, RabbitMQ management) are forwarded too.
+    """
+    params = connection_to_params(connection)
+    if not connection.ssh_enabled:
+        yield params
+        return
+
+    if (params.get('connection_uri') or '').strip():
+        raise BackupRestoreError(
+            'SSH tunnel cannot be used with a connection URI; use host/port instead.'
+        )
+
+    remote_host = (connection.host or '').strip() or '127.0.0.1'
+    remote_port = default_remote_db_port(connection.engine, connection.port)
+    remotes: list[tuple[str, int]] = [(remote_host, remote_port)]
+
+    extra_key: str | None = None
+    extra_remote_port: int | None = None
+    if connection.engine in EXTRA_ENGINE_PORTS:
+        extra_key, default_extra = EXTRA_ENGINE_PORTS[connection.engine]
+        extras = extras_dict(params)
+        try:
+            extra_remote_port = int(extras.get(extra_key, default_extra))
+        except (TypeError, ValueError):
+            extra_remote_port = default_extra
+        if extra_remote_port != remote_port:
+            remotes.append((remote_host, extra_remote_port))
+
+    with ssh_local_forwards(
+        ssh_host=(connection.ssh_host or '').strip(),
+        ssh_port=int(connection.ssh_port or 22),
+        ssh_username=(connection.ssh_username or '').strip(),
+        ssh_password=connection.ssh_password or '',
+        ssh_private_key=connection.ssh_private_key or '',
+        ssh_private_key_passphrase=connection.ssh_private_key_passphrase or '',
+        host_key_fingerprint=connection.ssh_host_key_fingerprint or '',
+        remotes=remotes,
+    ) as local_ports:
+        params = dict(params)
+        params['host'] = '127.0.0.1'
+        params['port'] = local_ports[0]
+        params['connection_uri'] = ''
+        if extra_key and len(local_ports) > 1:
+            extras = dict(params.get('extra_options') or {})
+            extras[extra_key] = local_ports[1]
+            params['extra_options'] = extras
+        yield params
 
 
 def _backup_run_subdir(*, trigger: str, schedule_job_id: int | None, schedule_job_name: str) -> str:
@@ -97,7 +160,6 @@ def perform_backup(
 
     actor = initiated_by if initiated_by is not None else connection.user
 
-    params = connection_to_params(connection)
     engine = connection.engine
 
     db_slug = slugify(connection.name)[:80] or f'connection-{connection.pk}'
@@ -127,29 +189,30 @@ def perform_backup(
     media_root = Path(settings.MEDIA_ROOT).resolve()
 
     try:
-        if engine == DatabaseConnection.Engine.MONGODB:
-            job_dir = export_root / f'{file_slug}_{stamp}_mongo_work'
-            job_dir.mkdir(parents=True, exist_ok=True)
-            dump_root = dbs_backup(engine, params, dest=job_dir)
-            archive_base = export_root / f'{file_slug}_{stamp}'
-            shutil.make_archive(str(archive_base), 'zip', root_dir=str(dump_root))
-            archive_path = Path(str(archive_base) + '.zip')
-            shutil.rmtree(job_dir, ignore_errors=True)
-            path, filename = archive_path, archive_path.name
-        else:
-            extensions = {
-                DatabaseConnection.Engine.POSTGRESQL: '.dump',
-                DatabaseConnection.Engine.MYSQL: '.sql',
-                DatabaseConnection.Engine.MARIADB: '.sql',
-                DatabaseConnection.Engine.REDIS: '.rdb',
-                DatabaseConnection.Engine.SQLSERVER: '.bacpac',
-                DatabaseConnection.Engine.CLICKHOUSE: '.zip',
-                DatabaseConnection.Engine.RABBITMQ: '.json',
-            }
-            ext = extensions.get(engine, '.bin')
-            out_path = export_root / f'{file_slug}_{stamp}{ext}'
-            dbs_backup(engine, params, dest=out_path)
-            path, filename = out_path, out_path.name
+        with tunneled_connection_params(connection) as params:
+            if engine == DatabaseConnection.Engine.MONGODB:
+                job_dir = export_root / f'{file_slug}_{stamp}_mongo_work'
+                job_dir.mkdir(parents=True, exist_ok=True)
+                dump_root = dbs_backup(engine, params, dest=job_dir)
+                archive_base = export_root / f'{file_slug}_{stamp}'
+                shutil.make_archive(str(archive_base), 'zip', root_dir=str(dump_root))
+                archive_path = Path(str(archive_base) + '.zip')
+                shutil.rmtree(job_dir, ignore_errors=True)
+                path, filename = archive_path, archive_path.name
+            else:
+                extensions = {
+                    DatabaseConnection.Engine.POSTGRESQL: '.dump',
+                    DatabaseConnection.Engine.MYSQL: '.sql',
+                    DatabaseConnection.Engine.MARIADB: '.sql',
+                    DatabaseConnection.Engine.REDIS: '.rdb',
+                    DatabaseConnection.Engine.SQLSERVER: '.bacpac',
+                    DatabaseConnection.Engine.CLICKHOUSE: '.zip',
+                    DatabaseConnection.Engine.RABBITMQ: '.json',
+                }
+                ext = extensions.get(engine, '.bin')
+                out_path = export_root / f'{file_slug}_{stamp}{ext}'
+                dbs_backup(engine, params, dest=out_path)
+                path, filename = out_path, out_path.name
 
         path = gzip_if_requested(path, compress)
         filename = path.name
@@ -225,4 +288,5 @@ def perform_backup(
 
 def test_saved_connection(connection: DatabaseConnection) -> None:
     """Raise :exc:`BackupRestoreError` if the probe fails."""
-    dbs_test(connection.engine, connection_to_params(connection))
+    with tunneled_connection_params(connection) as params:
+        dbs_test(connection.engine, params)

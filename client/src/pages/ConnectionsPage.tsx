@@ -154,7 +154,12 @@ export function ConnectionsPage() {
                       {c.engine}
                     </Badge>
                   </td>
-                  <td className="py-3 pr-4">{c.host}</td>
+                  <td className="py-3 pr-4">
+                    {c.host}
+                    {c.ssh_enabled ? (
+                      <span className="ml-1 text-xs text-muted-foreground">(SSH)</span>
+                    ) : null}
+                  </td>
                   <td className="py-3 pr-4">{c.port ?? '—'}</td>
                   <td className="py-3 text-right">
                     <div className="flex justify-end gap-1">

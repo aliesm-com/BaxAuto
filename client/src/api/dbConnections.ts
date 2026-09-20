@@ -37,6 +37,13 @@ export interface DatabaseConnectionDTO {
   virtual_host: string
   connection_uri: string
   use_tls: boolean
+  ssh_enabled: boolean
+  ssh_host: string
+  ssh_port: number | null
+  ssh_username: string
+  ssh_password_set: boolean
+  ssh_private_key_set: boolean
+  ssh_host_key_fingerprint: string
   extra_options: Record<string, unknown>
   created_at?: string
   updated_at?: string
@@ -53,6 +60,14 @@ export interface ConnectionWritePayload {
   virtual_host?: string
   connection_uri?: string
   use_tls?: boolean
+  ssh_enabled?: boolean
+  ssh_host?: string
+  ssh_port?: number | null
+  ssh_username?: string
+  ssh_password?: string
+  ssh_private_key?: string
+  ssh_private_key_passphrase?: string
+  ssh_host_key_fingerprint?: string
   extra_options?: Record<string, unknown>
 }
 
