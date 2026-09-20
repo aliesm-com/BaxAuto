@@ -1,12 +1,12 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 
-import { Database, HardDrive } from 'lucide-react'
+import { Database, HardDrive, Square } from 'lucide-react'
 
 import type { BackupRecord } from '@/api/resources'
-import { listBackupRecords } from '@/api/resources'
+import { cancelInProgressBackup, listBackupRecords } from '@/api/resources'
 import type { RestoreRecordDTO } from '@/api/restoresApi'
-import { listRestoreRecords } from '@/api/restoresApi'
+import { cancelInProgressRestore, listRestoreRecords } from '@/api/restoresApi'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -56,8 +56,9 @@ export function ActivityLogsPage() {
   const [backups, setBackups] = useState<BackupRecord[]>([])
   const [restores, setRestores] = useState<RestoreRecordDTO[]>([])
   const [error, setError] = useState<string | null>(null)
+  const [busyKey, setBusyKey] = useState<string | null>(null)
 
-  useEffect(() => {
+  const refresh = useCallback(() => {
     Promise.all([listBackupRecords(), listRestoreRecords()])
       .then(([b, r]) => {
         setBackups(b)
@@ -66,7 +67,36 @@ export function ActivityLogsPage() {
       .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load'))
   }, [])
 
+  useEffect(() => {
+    refresh()
+  }, [refresh])
+
   const rows = useMemo(() => asLogRows(backups, restores), [backups, restores])
+
+  async function onCancel(r: LogRow) {
+    if (
+      !window.confirm(
+        `Stop and remove this in-progress ${r.kind} #${r.id}? This cannot be undone.`,
+      )
+    ) {
+      return
+    }
+    setBusyKey(r.key)
+    setError(null)
+    try {
+      if (r.kind === 'backup') {
+        await cancelInProgressBackup(r.id)
+        setBackups((prev) => prev.filter((b) => b.id !== r.id))
+      } else {
+        await cancelInProgressRestore(r.id)
+        setRestores((prev) => prev.filter((row) => row.id !== r.id))
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Cancel failed')
+    } finally {
+      setBusyKey(null)
+    }
+  }
 
   return (
     <div className="space-y-6 p-6 lg:p-8">
@@ -82,7 +112,7 @@ export function ActivityLogsPage() {
       <Card>
         <CardHeader>
           <CardTitle>History</CardTitle>
-          <CardDescription>Newest first. Open the connection used for that run.</CardDescription>
+          <CardDescription>Newest first. In-progress rows can be stopped and removed.</CardDescription>
         </CardHeader>
         <CardContent className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -116,6 +146,20 @@ export function ActivityLogsPage() {
                   </td>
                   <td className="py-3 text-right">
                     <div className="flex justify-end gap-1">
+                      {r.status === 'in_progress' ? (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="size-8 text-destructive"
+                          type="button"
+                          disabled={busyKey === r.key}
+                          title="Stop and remove"
+                          onClick={() => void onCancel(r)}
+                        >
+                          <Square className="size-4" />
+                          <span className="sr-only">Stop</span>
+                        </Button>
+                      ) : null}
                       {r.kind === 'backup' ? (
                         <Button variant="ghost" size="icon" className="size-8" asChild>
                           <Link to="/backups">

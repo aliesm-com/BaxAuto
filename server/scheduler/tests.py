@@ -92,7 +92,24 @@ class StaleInProgressSweepTests(TestCase):
         self.assertEqual(removed, 1)
         self.assertFalse(BackupRecord.objects.filter(pk=stale.pk).exists())
         self.assertTrue(BackupRecord.objects.filter(pk=fresh.pk).exists())
-        self.assertTrue(_has(cm.output, 'status=warning', 'source=backup', 'Stale in-progress'))
+        self.assertTrue(_has(cm.output, 'status=warning', 'source=backup', 'Auto-removed'))
+
+    def test_manual_cancel_backup_api(self):
+        from rest_framework.test import APIClient
+
+        record = BackupRecord.objects.create(
+            connection=self.conn,
+            initiated_by=self.user,
+            status=BackupRecord.Status.IN_PROGRESS,
+            engine=self.conn.engine,
+        )
+        client = APIClient()
+        client.force_authenticate(self.user)
+        with self.assertLogs('baxauto.alert', level='WARNING') as cm:
+            res = client.post(f'/api/backup-records/{record.pk}/cancel/')
+        self.assertEqual(res.status_code, 204)
+        self.assertFalse(BackupRecord.objects.filter(pk=record.pk).exists())
+        self.assertTrue(_has(cm.output, 'status=warning', 'Cancelled from the panel'))
 
     def test_scheduler_tick_sweeps_before_running_jobs(self):
         BackupRecord.objects.create(

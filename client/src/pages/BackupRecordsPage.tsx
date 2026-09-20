@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 
-import { Database, Download, RotateCcw } from 'lucide-react'
+import { Database, Download, RotateCcw, Square } from 'lucide-react'
 
 import type { BackupRecord } from '@/api/resources'
-import { listBackupRecords } from '@/api/resources'
+import { cancelInProgressBackup, listBackupRecords } from '@/api/resources'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -14,12 +14,39 @@ import { formatDateTime } from '@/lib/datetime'
 export function BackupRecordsPage() {
   const [rows, setRows] = useState<BackupRecord[]>([])
   const [error, setError] = useState<string | null>(null)
+  const [busyId, setBusyId] = useState<number | null>(null)
 
-  useEffect(() => {
+  const refresh = useCallback(() => {
     listBackupRecords()
       .then(setRows)
       .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load'))
   }, [])
+
+  useEffect(() => {
+    refresh()
+  }, [refresh])
+
+  async function onCancel(b: BackupRecord) {
+    if (
+      !window.confirm(
+        `Stop and remove in-progress backup #${b.id} for “${b.connection_name}”? This cannot be undone.`,
+      )
+    ) {
+      return
+    }
+    setBusyId(b.id)
+    setError(null)
+    try {
+      await cancelInProgressBackup(b.id)
+      setRows((prev) => prev.filter((row) => row.id !== b.id))
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Cancel failed')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  const inProgressCount = rows.filter((b) => b.status === 'in_progress').length
 
   return (
     <div className="space-y-6 p-6 lg:p-8">
@@ -27,6 +54,9 @@ export function BackupRecordsPage() {
         <h1 className="text-2xl font-semibold tracking-tight">Backups</h1>
         <p className="text-sm text-muted-foreground">
           Logical backups recorded for your connections. Successful files are also copied to every storage destination you have configured.
+          {inProgressCount > 0
+            ? ` ${inProgressCount} run(s) still in progress — you can stop and remove them below.`
+            : ''}
         </p>
       </div>
       {error ? <p className="text-sm text-red-600">{error}</p> : null}
@@ -83,6 +113,20 @@ export function BackupRecordsPage() {
                           <span className="sr-only">Connection</span>
                         </Link>
                       </Button>
+                      {b.status === 'in_progress' ? (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="size-8 text-destructive"
+                          type="button"
+                          disabled={busyId === b.id}
+                          title="Stop and remove this in-progress backup"
+                          onClick={() => void onCancel(b)}
+                        >
+                          <Square className="size-4" />
+                          <span className="sr-only">Stop</span>
+                        </Button>
+                      ) : null}
                       {b.status === 'success' ? (
                         <>
                           <Button variant="ghost" size="icon" className="size-8" asChild>

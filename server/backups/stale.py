@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import timedelta
 from pathlib import Path
+from typing import Any
 
 from django.conf import settings
 from django.utils import timezone
@@ -28,6 +29,62 @@ def _unlink_media_if_present(relative_media_path: str) -> None:
         pass
 
 
+def cancel_in_progress_backup(
+    record: BackupRecord,
+    *,
+    reason: str = 'Cancelled manually.',
+    cancelled_by: Any = None,
+) -> None:
+    """Stop and delete an ``in_progress`` backup row; raise ``ValueError`` if not eligible."""
+    if record.status != BackupRecord.Status.IN_PROGRESS:
+        raise ValueError('Only in-progress backups can be cancelled.')
+    name = getattr(record.connection, 'name', None) or f'connection#{record.connection_id}'
+    job_name = getattr(record.scheduled_job, 'name', None) or ''
+    _unlink_media_if_present(record.relative_media_path)
+    pk = record.pk
+    connection_id = record.connection_id
+    actor = getattr(cancelled_by, 'username', None) or getattr(cancelled_by, 'pk', None)
+    record.delete()
+    detail = f'backup #{pk} on “{name}”'
+    if job_name:
+        detail += f' (schedule “{job_name}”)'
+    msg = f'In-progress {detail} stopped and removed. {reason}'.strip()
+    log_alert(
+        msg,
+        status='warning',
+        source='backup',
+        connection_id=connection_id,
+        backup_id=pk,
+        cancelled_by=actor,
+    )
+
+
+def cancel_in_progress_restore(
+    record: RestoreRecord,
+    *,
+    reason: str = 'Cancelled manually.',
+    cancelled_by: Any = None,
+) -> None:
+    """Stop and delete an ``in_progress`` restore row; raise ``ValueError`` if not eligible."""
+    if record.status != RestoreRecord.Status.IN_PROGRESS:
+        raise ValueError('Only in-progress restores can be cancelled.')
+    name = getattr(record.connection, 'name', None) or f'connection#{record.connection_id}'
+    pk = record.pk
+    connection_id = record.connection_id
+    backup_id = record.backup_id
+    actor = getattr(cancelled_by, 'username', None) or getattr(cancelled_by, 'pk', None)
+    record.delete()
+    log_alert(
+        f'In-progress restore #{pk} on “{name}” stopped and removed. {reason}'.strip(),
+        status='warning',
+        source='restore',
+        connection_id=connection_id,
+        restore_id=pk,
+        backup_id=backup_id,
+        cancelled_by=actor,
+    )
+
+
 def sweep_stale_in_progress(*, older_than: timedelta | None = None) -> int:
     """
     Delete backup and restore records stuck in ``in_progress`` past ``older_than``.
@@ -47,24 +104,12 @@ def sweep_stale_in_progress(*, older_than: timedelta | None = None) -> int:
         .order_by('created_at')
     )
     for record in stale_backups:
-        name = getattr(record.connection, 'name', None) or f'connection#{record.connection_id}'
-        job_name = getattr(record.scheduled_job, 'name', None) or ''
         age_minutes = int((timezone.now() - record.created_at).total_seconds() // 60)
-        _unlink_media_if_present(record.relative_media_path)
-        pk = record.pk
-        connection_id = record.connection_id
-        record.delete()
-        removed += 1
-        detail = f'backup #{pk} on “{name}”'
-        if job_name:
-            detail += f' (schedule “{job_name}”)'
-        log_alert(
-            f'Stale in-progress {detail} removed after {age_minutes} minute(s).',
-            status='warning',
-            source='backup',
-            connection_id=connection_id,
-            backup_id=pk,
+        cancel_in_progress_backup(
+            record,
+            reason=f'Auto-removed after {age_minutes} minute(s) stuck in progress.',
         )
+        removed += 1
 
     stale_restores = list(
         RestoreRecord.objects.filter(
@@ -75,20 +120,11 @@ def sweep_stale_in_progress(*, older_than: timedelta | None = None) -> int:
         .order_by('created_at')
     )
     for record in stale_restores:
-        name = getattr(record.connection, 'name', None) or f'connection#{record.connection_id}'
         age_minutes = int((timezone.now() - record.created_at).total_seconds() // 60)
-        pk = record.pk
-        connection_id = record.connection_id
-        backup_id = record.backup_id
-        record.delete()
-        removed += 1
-        log_alert(
-            f'Stale in-progress restore #{pk} on “{name}” removed after {age_minutes} minute(s).',
-            status='warning',
-            source='restore',
-            connection_id=connection_id,
-            restore_id=pk,
-            backup_id=backup_id,
+        cancel_in_progress_restore(
+            record,
+            reason=f'Auto-removed after {age_minutes} minute(s) stuck in progress.',
         )
+        removed += 1
 
     return removed

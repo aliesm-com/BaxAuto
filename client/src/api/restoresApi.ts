@@ -1,4 +1,4 @@
-import { apiJson } from '@/api/client'
+import { apiFetch, apiJson } from '@/api/client'
 
 export interface RestoreRecordDTO {
   id: number
@@ -30,4 +30,21 @@ export async function triggerRestore(backupId: number, body: RestoreRequestBody 
     method: 'POST',
     body: JSON.stringify(body),
   })
+}
+
+export async function cancelInProgressRestore(id: number): Promise<void> {
+  const res = await apiFetch(`/api/restore-records/${id}/cancel/`, {
+    method: 'POST',
+    body: '{}',
+  })
+  if (!res.ok) {
+    let detail = `Cancel failed (${res.status})`
+    try {
+      const body = (await res.json()) as { detail?: string }
+      if (body.detail) detail = body.detail
+    } catch {
+      /* ignore */
+    }
+    throw new Error(detail)
+  }
 }

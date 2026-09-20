@@ -5,6 +5,7 @@ from django.http import FileResponse
 from drf_spectacular.utils import extend_schema
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
@@ -21,6 +22,7 @@ from .serializers import (
     RestoreRecordSerializer,
     RestoreRequestSerializer,
 )
+from .stale import cancel_in_progress_backup, cancel_in_progress_restore
 
 
 class BackupRecordViewSet(viewsets.ReadOnlyModelViewSet):
@@ -81,6 +83,24 @@ class BackupRecordViewSet(viewsets.ReadOnlyModelViewSet):
         )
         return FileResponse(path.open('rb'), as_attachment=True, filename=name)
 
+    @extend_schema(request=None, responses={204: None, 400: dict})
+    @action(detail=True, methods=['post'])
+    def cancel(self, request, pk=None):
+        """Stop an in-progress backup and remove it from the list."""
+        backup = self.get_object()
+        role = connection_access_role(request.user, backup.connection)
+        if role == 'viewer':
+            raise PermissionDenied('Viewers cannot cancel backups on shared connections.')
+        try:
+            cancel_in_progress_backup(
+                backup,
+                reason='Cancelled from the panel.',
+                cancelled_by=request.user,
+            )
+        except ValueError as e:
+            return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
     @extend_schema(request=RestoreRequestSerializer, responses={201: RestoreRecordSerializer})
     @action(detail=True, methods=['post'])
     def restore(self, request, pk=None):
@@ -119,3 +139,21 @@ class RestoreRecordViewSet(viewsets.ReadOnlyModelViewSet):
             .distinct()
             .select_related('backup', 'connection', 'initiated_by')
         )
+
+    @extend_schema(request=None, responses={204: None, 400: dict})
+    @action(detail=True, methods=['post'])
+    def cancel(self, request, pk=None):
+        """Stop an in-progress restore and remove it from the list."""
+        restore = self.get_object()
+        role = connection_access_role(request.user, restore.connection)
+        if role == 'viewer':
+            raise PermissionDenied('Viewers cannot cancel restores on shared connections.')
+        try:
+            cancel_in_progress_restore(
+                restore,
+                reason='Cancelled from the panel.',
+                cancelled_by=request.user,
+            )
+        except ValueError as e:
+            return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(status=status.HTTP_204_NO_CONTENT)
