@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from datetime import timedelta
 from typing import Any
 
 from django.db import connection, connections, transaction
 from django.tasks.base import Task, TaskResultStatus
 from django.utils import timezone
+
+from backups.stale import STALE_IN_PROGRESS_AFTER, sweep_stale_in_progress
 
 from .models import ScheduledJob
 from .tasks import REGISTERED_SCHEDULER_TASKS
@@ -21,6 +22,8 @@ def run_due_scheduled_jobs(limit: int = 50) -> int:
     ImmediateBackend runs backups synchronously and must not hold a SQLite lock
     for the duration of ``pg_dump``.
     """
+    sweep_stale_in_progress()
+
     now = timezone.now()
     ids = list(
         ScheduledJob.objects.filter(enabled=True, next_run__lte=now)
@@ -93,37 +96,16 @@ def _claim_due_job(job_id: int) -> tuple[ScheduledJob, dict[str, Any], Task | No
                 'schedule_job_id': job.pk,
                 'schedule_job_name': job.name,
             }
-            if cid:
-                stale_before = timezone.now() - timedelta(minutes=45)
-                stale_qs = BackupRecord.objects.filter(
-                    connection_id=cid,
-                    status=BackupRecord.Status.IN_PROGRESS,
-                    created_at__lt=stale_before,
-                )
-                stale_ids = list(stale_qs.values_list('pk', flat=True))
-                if stale_ids:
-                    BackupRecord.objects.filter(pk__in=stale_ids).update(
-                        status=BackupRecord.Status.FAILED,
-                        error_message='Stale in-progress backup (interrupted).',
-                        finished_at=timezone.now(),
-                    )
-                    from baxconf.alertlog import log_alert
-
-                    log_alert(
-                        f'Stale in-progress backup interrupted (connection_id={cid}, count={len(stale_ids)}).',
-                        status='warning',
-                        source='backup',
-                        connection_id=cid,
-                    )
-                if BackupRecord.objects.filter(
-                    connection_id=cid,
-                    status=BackupRecord.Status.IN_PROGRESS,
-                ).exists():
-                    return None
+            if cid and BackupRecord.objects.filter(
+                connection_id=cid,
+                status=BackupRecord.Status.IN_PROGRESS,
+            ).exists():
+                # Still running (sweep already cleared rows older than 1h).
+                return None
 
         # Hold the row so overlapping ticks skip it. The user's interval/cron is
         # applied when the run finishes, not at claim time.
-        job.next_run = claimed_at + timedelta(minutes=45)
+        job.next_run = claimed_at + STALE_IN_PROGRESS_AFTER
         job.save(update_fields=['next_run', 'updated_at'])
         return job, kwargs, task_obj
 
