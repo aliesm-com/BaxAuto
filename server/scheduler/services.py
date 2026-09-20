@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import timedelta
 from typing import Any
 
 from django.db import connection, connections, transaction
@@ -101,11 +102,21 @@ def _claim_due_job(job_id: int) -> tuple[ScheduledJob, dict[str, Any], Task | No
                 status=BackupRecord.Status.IN_PROGRESS,
             ).exists():
                 # Still running (sweep already cleared rows older than 1h).
+                # Retry soon instead of waiting for the previous claim hold.
+                job.next_run = claimed_at + timedelta(minutes=1)
+                job.save(update_fields=['next_run', 'updated_at'])
                 return None
 
-        # Hold the row so overlapping ticks skip it. The user's interval/cron is
-        # applied when the run finishes, not at claim time.
-        job.next_run = claimed_at + STALE_IN_PROGRESS_AFTER
+        # Hold the row so overlapping ticks skip it. Keep this short so a crashed
+        # worker recovers quickly; stale in-progress backups are swept after 1h.
+        hold = timedelta(minutes=10)
+        if (
+            job.schedule_kind == ScheduledJob.ScheduleKind.INTERVAL
+            and job.interval_seconds
+            and job.interval_seconds > 60
+        ):
+            hold = min(STALE_IN_PROGRESS_AFTER, timedelta(seconds=max(int(job.interval_seconds) * 2, 600)))
+        job.next_run = claimed_at + hold
         job.save(update_fields=['next_run', 'updated_at'])
         return job, kwargs, task_obj
 
