@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import AppSettings, BackupRecord, RestoreRecord
+from .models import AlertEvent, AppSettings, BackupRecord, RestoreRecord
 
 
 @admin.register(BackupRecord)
@@ -29,6 +29,14 @@ class RestoreRecordAdmin(admin.ModelAdmin):
     list_display = ('id', 'backup', 'connection', 'status', 'engine', 'created_at', 'finished_at')
     list_filter = ('status', 'engine')
     readonly_fields = ('created_at', 'updated_at', 'finished_at')
+
+
+@admin.register(AlertEvent)
+class AlertEventAdmin(admin.ModelAdmin):
+    list_display = ('id', 'status', 'source', 'error', 'created_at')
+    list_filter = ('status', 'source')
+    search_fields = ('description', 'error', 'source')
+    readonly_fields = ('created_at', 'webhook_status')
 
 
 @admin.register(AppSettings)

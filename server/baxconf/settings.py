@@ -7,7 +7,8 @@ Environment variables (optional `.env` next to `manage.py`):
   TIME_ZONE (defaults to Asia/Tehran),
   CORS_ALLOWED_ORIGINS (comma-separated),
   CSRF_TRUSTED_ORIGINS (comma-separated),
-  DB_CREDENTIALS_FERNET_KEY (optional Fernet key for encrypted DB connection passwords).
+  DB_CREDENTIALS_FERNET_KEY (optional Fernet key for encrypted DB connection passwords),
+  ALERT_WEBHOOK_URL / ALERT_WEBHOOK_TOKEN (optional outbound alert webhook).
 """
 
 import os
@@ -27,6 +28,9 @@ env = environ.Env(
 _env_file = BASE_DIR / '.env'
 if _env_file.exists():
     environ.Env.read_env(_env_file)
+_root_env = BASE_DIR.parent / '.env'
+if _root_env.exists() and _root_env != _env_file:
+    environ.Env.read_env(_root_env)
 
 # Quick-start development settings — unsuitable for production
 # See https://docs.djangoproject.com/en/stable/howto/deployment/checklist/
@@ -45,6 +49,12 @@ OVERVIEW_STORAGE_QUOTA_BYTES = env.int('OVERVIEW_STORAGE_QUOTA_BYTES', default=1
 # Optional: show worker count in dashboard health (omit env var to hide).
 _overview_workers = env.str('OVERVIEW_WORKERS_COUNT', default='').strip()
 OVERVIEW_WORKERS_COUNT = int(_overview_workers) if _overview_workers.isdigit() else None
+
+# Outgoing alert webhook (errors/warnings). Leave URL blank to disable.
+ALERT_WEBHOOK_URL = env.str('ALERT_WEBHOOK_URL', default='').strip()
+ALERT_WEBHOOK_TOKEN = env.str('ALERT_WEBHOOK_TOKEN', default='').strip()
+ALERT_WEBHOOK_TIMEOUT = env.int('ALERT_WEBHOOK_TIMEOUT', default=15)
+ALERT_WEBHOOK_SYNC = env.bool('ALERT_WEBHOOK_SYNC', default=False)
 
 DEBUG = env('DEBUG', default=True)
 

@@ -80,6 +80,7 @@ def _claim_due_job(job_id: int) -> tuple[ScheduledJob, dict[str, Any], Task | No
                 f'Scheduled job “{job.name}” failed: {job.last_error}',
                 status='error',
                 source='schedule',
+                error=(job.last_error or 'schedule failed')[:255],
                 job_id=job.pk,
                 task_key=job.task_key,
             )
@@ -154,6 +155,7 @@ def _finish_job(job_id: int, *, success: bool, error: str) -> None:
                 f'Scheduled job “{job.name}” failed: {job.last_error or "Task failed."}',
                 status='error',
                 source='schedule',
+                error=(job.last_error or 'schedule failed')[:255],
                 job_id=job.pk,
                 task_key=job.task_key,
             )

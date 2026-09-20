@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from rest_framework import serializers
 
-from .models import AppSettings, BackupRecord, RestoreRecord
+from .models import AlertEvent, AppSettings, BackupRecord, RestoreRecord
 from .services import local_backup_available
 
 
@@ -76,6 +76,26 @@ class RestoreRequestSerializer(serializers.Serializer):
         allow_null=True,
         help_text='Download the artifact from this storage destination before restore. Omit for local MEDIA.',
     )
+
+
+class AlertEventSerializer(serializers.ModelSerializer):
+    webhook_status = serializers.SerializerMethodField()
+
+    class Meta:
+        model = AlertEvent
+        fields = (
+            'id',
+            'status',
+            'webhook_status',
+            'source',
+            'error',
+            'description',
+            'created_at',
+        )
+        read_only_fields = fields
+
+    def get_webhook_status(self, obj: AlertEvent) -> str:
+        return obj.webhook_status
 
 
 class AppSettingsSerializer(serializers.ModelSerializer):

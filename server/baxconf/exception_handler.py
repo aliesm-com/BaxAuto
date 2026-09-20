@@ -70,6 +70,7 @@ def api_exception_handler(exc, context):
             detail,
             status='error',
             source=source,
+            error=detail[:255],
             method=method,
             path=path,
         )
@@ -81,6 +82,7 @@ def api_exception_handler(exc, context):
             msg,
             http_status=response.status_code,
             source=source,
+            error=msg[:255],
             method=method,
             path=path,
         )

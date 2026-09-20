@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Area,
   AreaChart,
@@ -19,14 +19,27 @@ import {
   LineChart as LineChartIcon,
   Plus,
   RefreshCw,
+  ShieldAlert,
 } from 'lucide-react'
 
+import type { AlertEventDTO } from '@/api/alertsApi'
+import { listAlerts } from '@/api/alertsApi'
 import type { OverviewDTO } from '@/api/overview'
 import { fetchOverview } from '@/api/overview'
+import { AlertEventList } from '@/components/alerts/AlertEventList'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Progress } from '@/components/ui/progress'
+import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 
 function formatBytes(n: number | null): string {
@@ -55,6 +68,16 @@ function timeAgo(iso: string): string {
 export function OverviewPage() {
   const [data, setData] = useState<OverviewDTO | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [alerts, setAlerts] = useState<AlertEventDTO[]>([])
+  const [alertsOpen, setAlertsOpen] = useState(false)
+
+  const loadAlerts = useCallback(async () => {
+    try {
+      setAlerts(await listAlerts())
+    } catch {
+      /* overview still works if alerts are unavailable */
+    }
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -70,6 +93,14 @@ export function OverviewPage() {
       cancelled = true
     }
   }, [])
+
+  useEffect(() => {
+    void loadAlerts()
+    const id = window.setInterval(() => {
+      void loadAlerts()
+    }, 30000)
+    return () => window.clearInterval(id)
+  }, [loadAlerts])
 
   const chartData = useMemo(
     () =>
@@ -130,6 +161,7 @@ export function OverviewPage() {
   const recent = data.recent_success
   const sch = data.health.scheduler
   const quotaLabel = `${formatBytes(data.storage.used_bytes)} / ${formatBytes(data.storage.quota_bytes)}`
+  const previewAlerts = alerts.slice(0, 3)
 
   return (
     <div className="flex min-h-full gap-6 p-6 lg:p-8">
@@ -144,6 +176,24 @@ export function OverviewPage() {
           <div className="flex flex-wrap items-center gap-2">
             <Button variant="outline" size="sm" className="rounded-full">
               Last 7 days
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="rounded-full xl:hidden"
+              type="button"
+              onClick={() => {
+                void loadAlerts()
+                setAlertsOpen(true)
+              }}
+            >
+              <ShieldAlert className="size-4" />
+              View Alert
+              {alerts.length > 0 ? (
+                <Badge variant="destructive" className="font-normal">
+                  {alerts.length}
+                </Badge>
+              ) : null}
             </Button>
             <Button asChild size="sm" className="rounded-full shadow-md">
               <Link to="/databases">
@@ -313,6 +363,39 @@ export function OverviewPage() {
                 <FolderOpen className="size-4" /> View Logs
               </Link>
             </Button>
+            <Button
+              variant="outline"
+              className="justify-start gap-2"
+              type="button"
+              onClick={() => {
+                void loadAlerts()
+                setAlertsOpen(true)
+              }}
+            >
+              <ShieldAlert className="size-4" /> View Alert
+              {alerts.length > 0 ? (
+                <Badge variant="destructive" className="ml-auto font-normal">
+                  {alerts.length}
+                </Badge>
+              ) : null}
+            </Button>
+            {previewAlerts.length > 0 ? (
+              <div className="mt-2 space-y-2 border-t border-border pt-3">
+                {previewAlerts.map((alert) => (
+                  <button
+                    key={alert.id}
+                    type="button"
+                    className="block w-full rounded-md border border-red-200/70 bg-red-50/70 px-2.5 py-2 text-left hover:bg-red-50 dark:border-red-900/50 dark:bg-red-950/40 dark:hover:bg-red-950/70"
+                    onClick={() => setAlertsOpen(true)}
+                  >
+                    <p className="line-clamp-2 text-xs font-medium leading-snug">{alert.description}</p>
+                    <p className="mt-1 text-[11px] text-muted-foreground">
+                      {alert.error || alert.source || 'alert'} · {timeAgo(alert.created_at)}
+                    </p>
+                  </button>
+                ))}
+              </div>
+            ) : null}
           </CardContent>
         </Card>
 
@@ -361,6 +444,25 @@ export function OverviewPage() {
           </CardContent>
         </Card>
       </aside>
+
+      <Dialog open={alertsOpen} onOpenChange={setAlertsOpen}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Alerts</DialogTitle>
+            <DialogDescription>Recent errors and warnings from backups, restores, and jobs.</DialogDescription>
+          </DialogHeader>
+          <ScrollArea className="max-h-[60vh] pr-3">
+            <AlertEventList alerts={alerts} emptyText="No alerts right now." />
+          </ScrollArea>
+          <DialogFooter>
+            <Button variant="outline" asChild>
+              <Link to="/alerts" onClick={() => setAlertsOpen(false)}>
+                Open Alerts page
+              </Link>
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

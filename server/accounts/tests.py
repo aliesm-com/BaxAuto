@@ -46,6 +46,24 @@ class LogAlertHelperTests(TestCase):
             log_http_alert('bad request', http_status=400, source='restore')
         self.assertTrue(_has(cm.output, 'ERROR', 'status=error', 'http_status=400'))
 
+    def test_error_is_persisted(self):
+        from backups.models import AlertEvent
+
+        log_alert('Backup failed: boom', status='error', source='backup', error='boom')
+        row = AlertEvent.objects.get()
+        self.assertEqual(row.status, AlertEvent.Status.ERROR)
+        self.assertEqual(row.webhook_status, 'down')
+        self.assertEqual(row.error, 'boom')
+        self.assertEqual(row.description, 'Backup failed: boom')
+
+    def test_warning_webhook_status_is_degraded(self):
+        from backups.models import AlertEvent
+
+        log_alert('partial upload', status='warning', source='backup', error='storage upload failed')
+        row = AlertEvent.objects.get()
+        self.assertEqual(row.webhook_status, 'degraded')
+        self.assertEqual(row.error, 'storage upload failed')
+
 
 class AuthOperationLogTests(TestCase):
     def setUp(self):
