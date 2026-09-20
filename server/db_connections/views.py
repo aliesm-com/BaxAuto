@@ -19,7 +19,7 @@ from .serializers import (
     ConnectionShareWriteSerializer,
     DatabaseConnectionSerializer,
 )
-from .services import perform_backup, test_saved_connection
+from .services import perform_backup, probe_saved_connection
 
 
 class DatabaseConnectionViewSet(viewsets.ModelViewSet):
@@ -76,28 +76,34 @@ class DatabaseConnectionViewSet(viewsets.ModelViewSet):
         if role == 'viewer':
             raise PermissionDenied('Viewers cannot run backups or connection tests.')
 
-    @extend_schema(request=None, responses={200: dict})
+    @extend_schema(request=None, responses={200: dict, 400: dict})
     @action(detail=True, methods=['post'])
     def test_connection(self, request, pk=None):
         conn = self.get_object()
         self._require_not_viewer_share(conn)
-        try:
-            test_saved_connection(conn)
-        except (BackupRestoreError, ValueError) as e:
-            log_http_alert(
-                f'Connection test for “{conn.name}” failed: {e}',
-                http_status=status.HTTP_400_BAD_REQUEST,
+        result = probe_saved_connection(conn)
+        if result.get('ok'):
+            log_alert(
+                f'Connection test for “{conn.name}” succeeded.',
+                status='success',
                 source='connection_test',
                 connection_id=conn.pk,
             )
-            return Response({'ok': False, 'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
-        log_alert(
-            f'Connection test for “{conn.name}” succeeded.',
-            status='success',
+            return Response(result)
+
+        ssh = result.get('ssh') or {}
+        db = result.get('database') or {}
+        if ssh.get('enabled') and ssh.get('ok') is False:
+            detail = f"SSH tunnel failed: {ssh.get('detail') or 'unknown error'}"
+        else:
+            detail = f"Database probe failed: {db.get('detail') or 'unknown error'}"
+        log_http_alert(
+            f'Connection test for “{conn.name}” failed: {detail}',
+            http_status=status.HTTP_400_BAD_REQUEST,
             source='connection_test',
             connection_id=conn.pk,
         )
-        return Response({'ok': True})
+        return Response({**result, 'detail': detail}, status=status.HTTP_400_BAD_REQUEST)
 
     @extend_schema(request=BackupRequestSerializer, responses={200: None})
     @action(detail=True, methods=['post'])

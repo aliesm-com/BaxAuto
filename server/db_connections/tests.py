@@ -62,7 +62,43 @@ class ConnectionOperationLogTests(TestCase):
             with self.assertLogs('baxauto.alert', level='INFO') as cm:
                 res = self.client.post(f'/api/db-connections/{conn.pk}/test_connection/')
         self.assertEqual(res.status_code, 200)
+        body = res.json()
+        self.assertTrue(body['ok'])
+        self.assertTrue(body['ssh']['ok'])
+        self.assertFalse(body['ssh']['enabled'])
+        self.assertTrue(body['database']['ok'])
         self.assertTrue(_has(cm.output, 'status=success', 'source=connection_test', 'prod'))
+
+    def test_connection_test_reports_ssh_and_db(self):
+        from contextlib import contextmanager
+
+        conn = DatabaseConnection.objects.create(
+            user=self.user,
+            name='via-ssh',
+            engine=DatabaseConnection.Engine.POSTGRESQL,
+            host='127.0.0.1',
+            port=5432,
+            ssh_enabled=True,
+            ssh_host='bastion.example',
+            ssh_username='deploy',
+            ssh_password='secret',
+            ssh_host_key_fingerprint='SHA256:abcdef',
+        )
+
+        @contextmanager
+        def fake_forwards(**_kwargs):
+            yield [55432]
+
+        with patch('db_connections.services.ssh_local_forwards', fake_forwards):
+            with patch('db_connections.services.dbs_test', return_value=None):
+                res = self.client.post(f'/api/db-connections/{conn.pk}/test_connection/')
+        self.assertEqual(res.status_code, 200)
+        body = res.json()
+        self.assertTrue(body['ok'])
+        self.assertTrue(body['ssh']['enabled'])
+        self.assertTrue(body['ssh']['ok'])
+        self.assertIn('55432', body['ssh']['detail'])
+        self.assertTrue(body['database']['ok'])
 
 
 class BackupRestoreLogTests(TestCase):

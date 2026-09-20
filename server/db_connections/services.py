@@ -288,5 +288,98 @@ def perform_backup(
 
 def test_saved_connection(connection: DatabaseConnection) -> None:
     """Raise :exc:`BackupRestoreError` if the probe fails."""
-    with tunneled_connection_params(connection) as params:
-        dbs_test(connection.engine, params)
+    result = probe_saved_connection(connection)
+    if result.get('ok'):
+        return
+    ssh = result.get('ssh') or {}
+    db = result.get('database') or {}
+    if ssh.get('enabled') and ssh.get('ok') is False:
+        raise BackupRestoreError(f"SSH tunnel failed: {ssh.get('detail') or 'unknown error'}")
+    raise BackupRestoreError(f"Database probe failed: {db.get('detail') or 'unknown error'}")
+
+
+def probe_saved_connection(connection: DatabaseConnection) -> dict:
+    """
+    Probe SSH (when enabled) and the database separately.
+
+    Returns a JSON-serializable dict::
+
+        {
+          "ok": bool,
+          "ssh": {"enabled": bool, "ok": bool|None, "detail": str},
+          "database": {"ok": bool|None, "detail": str},
+        }
+    """
+    engine_label = connection.get_engine_display()
+    result: dict = {
+        'ok': False,
+        'ssh': {
+            'enabled': bool(connection.ssh_enabled),
+            'ok': None,
+            'detail': '',
+        },
+        'database': {
+            'ok': None,
+            'detail': '',
+        },
+    }
+
+    if not connection.ssh_enabled:
+        result['ssh'] = {
+            'enabled': False,
+            'ok': True,
+            'detail': 'SSH tunnel is off; testing a direct database connection.',
+        }
+        try:
+            dbs_test(connection.engine, connection_to_params(connection))
+        except Exception as e:
+            result['database'] = {
+                'ok': False,
+                'detail': str(e)[:2000],
+            }
+            return result
+        result['database'] = {
+            'ok': True,
+            'detail': f'{engine_label} accepted the connection.',
+        }
+        result['ok'] = True
+        return result
+
+    try:
+        with tunneled_connection_params(connection) as params:
+            local_port = params.get('port')
+            result['ssh'] = {
+                'enabled': True,
+                'ok': True,
+                'detail': (
+                    f'SSH tunnel to {connection.ssh_host}:{connection.ssh_port or 22} OK '
+                    f'(local 127.0.0.1:{local_port} → '
+                    f'{(connection.host or "").strip() or "127.0.0.1"}:'
+                    f'{default_remote_db_port(connection.engine, connection.port)}).'
+                ),
+            }
+            try:
+                dbs_test(connection.engine, params)
+            except Exception as e:
+                result['database'] = {
+                    'ok': False,
+                    'detail': str(e)[:2000],
+                }
+                return result
+            result['database'] = {
+                'ok': True,
+                'detail': f'{engine_label} accepted the connection through the tunnel.',
+            }
+            result['ok'] = True
+            return result
+    except Exception as e:
+        result['ssh'] = {
+            'enabled': True,
+            'ok': False,
+            'detail': str(e)[:2000],
+        }
+        result['database'] = {
+            'ok': None,
+            'detail': 'Skipped because the SSH tunnel could not be established.',
+        }
+        return result

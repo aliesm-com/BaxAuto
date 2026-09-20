@@ -120,6 +120,47 @@ export async function removeConnectionShare(connectionId: number, memberUserId: 
   if (!res.ok) throw new Error(await res.text())
 }
 
+export interface ConnectionProbeStep {
+  enabled?: boolean
+  ok: boolean | null
+  detail: string
+}
+
+export interface ConnectionProbeResult {
+  ok: boolean
+  detail?: string
+  ssh: ConnectionProbeStep
+  database: ConnectionProbeStep
+}
+
+export async function testConnection(id: number): Promise<ConnectionProbeResult> {
+  const res = await apiFetch(`/api/db-connections/${id}/test_connection/`, {
+    method: 'POST',
+    body: '{}',
+  })
+  let body: Partial<ConnectionProbeResult> & { detail?: string } = {}
+  try {
+    body = (await res.json()) as Partial<ConnectionProbeResult> & { detail?: string }
+  } catch {
+    if (!res.ok) throw new Error(`Test failed (${res.status})`)
+    throw new Error('Invalid test response')
+  }
+  const result: ConnectionProbeResult = {
+    ok: Boolean(body.ok),
+    detail: body.detail,
+    ssh: {
+      enabled: body.ssh?.enabled,
+      ok: body.ssh?.ok ?? null,
+      detail: body.ssh?.detail ?? '',
+    },
+    database: {
+      ok: body.database?.ok ?? null,
+      detail: body.database?.detail ?? '',
+    },
+  }
+  return result
+}
+
 export async function triggerBackupDownload(
   connectionId: number,
   opts?: { compress?: boolean },

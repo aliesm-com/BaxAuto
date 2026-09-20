@@ -1,9 +1,16 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 
-import { ArrowLeft, Download, Pencil, Share2, Trash2 } from 'lucide-react'
+import { ArrowLeft, Download, Pencil, PlugZap, Share2, Trash2 } from 'lucide-react'
 
-import { deleteConnection, getConnection, triggerBackupDownload, type DatabaseConnectionDTO } from '@/api/dbConnections'
+import {
+  deleteConnection,
+  getConnection,
+  testConnection,
+  triggerBackupDownload,
+  type ConnectionProbeResult,
+  type DatabaseConnectionDTO,
+} from '@/api/dbConnections'
 import { ConnectionFormModal } from '@/components/connections/ConnectionFormModal'
 import { ConnectionSharesModal } from '@/components/connections/ConnectionSharesModal'
 import { Button } from '@/components/ui/button'
@@ -11,12 +18,20 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
 
+function probeBadge(ok: boolean | null | undefined) {
+  if (ok === true) return <Badge className="bg-emerald-600 hover:bg-emerald-600">OK</Badge>
+  if (ok === false) return <Badge variant="destructive">Failed</Badge>
+  return <Badge variant="outline">Skipped</Badge>
+}
+
 export function ConnectionDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const [row, setRow] = useState<DatabaseConnectionDTO | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [testing, setTesting] = useState(false)
+  const [probe, setProbe] = useState<ConnectionProbeResult | null>(null)
   const [editOpen, setEditOpen] = useState(false)
   const [shareOpen, setShareOpen] = useState(false)
   const [compress, setCompress] = useState(false)
@@ -36,6 +51,24 @@ export function ConnectionDetailPage() {
       cancelled = true
     }
   }, [id])
+
+  async function onTest() {
+    if (!id) return
+    setTesting(true)
+    setError(null)
+    try {
+      const result = await testConnection(Number(id))
+      setProbe(result)
+      if (!result.ok) {
+        setError(result.detail || 'Connection test failed')
+      }
+    } catch (e) {
+      setProbe(null)
+      setError(e instanceof Error ? e.message : 'Connection test failed')
+    } finally {
+      setTesting(false)
+    }
+  }
 
   async function onBackup() {
     if (!id) return
@@ -103,6 +136,7 @@ export function ConnectionDetailPage() {
           try {
             const data = await getConnection(Number(id))
             setRow(data)
+            setProbe(null)
           } catch {
             /* ignore refresh errors */
           }
@@ -165,6 +199,17 @@ export function ConnectionDetailPage() {
             <Pencil className="mr-2 size-4" />
             Edit
           </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            type="button"
+            disabled={testing || busy || row.access_role === 'viewer'}
+            title={row.access_role === 'viewer' ? 'Viewers cannot run connection tests' : undefined}
+            onClick={() => void onTest()}
+          >
+            <PlugZap className="mr-2 size-4" />
+            {testing ? 'Testing…' : 'Test connection'}
+          </Button>
           <label className="flex items-center gap-2 text-sm" title="Also copies the dump to every storage destination on your account">
             <input
               type="checkbox"
@@ -198,6 +243,42 @@ export function ConnectionDetailPage() {
       </div>
 
       {error ? <p className="text-sm text-red-600">{error}</p> : null}
+
+      {probe ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              Test result
+              {probe.ok ? (
+                <Badge className="bg-emerald-600 hover:bg-emerald-600">All OK</Badge>
+              ) : (
+                <Badge variant="destructive">Failed</Badge>
+              )}
+            </CardTitle>
+            <CardDescription>SSH tunnel and database are checked as separate steps.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4 text-sm">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 font-medium">
+                SSH tunnel
+                {probeBadge(probe.ssh.enabled === false ? true : probe.ssh.ok)}
+                {probe.ssh.enabled === false ? (
+                  <span className="text-xs font-normal text-muted-foreground">(not used)</span>
+                ) : null}
+              </div>
+              <p className="text-muted-foreground">{probe.ssh.detail || '—'}</p>
+            </div>
+            <Separator />
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 font-medium">
+                Database
+                {probeBadge(probe.database.ok)}
+              </div>
+              <p className="text-muted-foreground">{probe.database.detail || '—'}</p>
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
 
       <Card>
         <CardHeader>
