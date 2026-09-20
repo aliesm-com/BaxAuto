@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { type BackupSource, backupSources } from '@/lib/backupSources'
 import { formatDateTime } from '@/lib/datetime'
 
 export function RestorePage() {
@@ -26,6 +27,7 @@ export function RestorePage() {
   const [applySchema, setApplySchema] = useState(false)
   const [truncateFirst, setTruncateFirst] = useState(false)
   const [drop, setDrop] = useState(false)
+  const [sourceKey, setSourceKey] = useState('')
   const [running, setRunning] = useState(false)
   const [resultMsg, setResultMsg] = useState<string | null>(null)
 
@@ -84,7 +86,23 @@ export function RestorePage() {
     return dedup.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
   }, [filteredSuccess, successBackups, backupId])
 
-  const selectedBackupValid = backupId !== '' && successBackups.some((b) => b.id === backupId)
+  const selectedBackup = backupId !== '' ? successBackups.find((b) => b.id === backupId) : undefined
+  const selectedSources = useMemo(
+    () => (selectedBackup ? backupSources(selectedBackup) : []),
+    [selectedBackup],
+  )
+  const selectedBackupValid = Boolean(selectedBackup) && selectedSources.length > 0
+
+  useEffect(() => {
+    if (!selectedSources.length) {
+      setSourceKey('')
+      return
+    }
+    setSourceKey((prev) => {
+      if (prev && selectedSources.some((s) => sourceKeyOf(s) === prev)) return prev
+      return sourceKeyOf(selectedSources[0])
+    })
+  }, [selectedSources])
 
   function setBackupAndUrl(id: number | '') {
     setBackupId(id)
@@ -106,6 +124,11 @@ export function RestorePage() {
       setResultMsg('Choose a successful backup.')
       return
     }
+    const source = selectedSources.find((s) => sourceKeyOf(s) === sourceKey)
+    if (!source) {
+      setResultMsg('Choose a backup source (local or remote storage).')
+      return
+    }
     setRunning(true)
     try {
       const rr = await triggerRestore(backupId, {
@@ -113,6 +136,7 @@ export function RestorePage() {
         apply_schema: applySchema || undefined,
         truncate_first: truncateFirst || undefined,
         drop: drop || undefined,
+        storage_id: source.kind === 'storage' ? source.id : null,
       })
       setResultMsg(`Restore started (record #${rr.id}, status: ${rr.status}). Check Activity Logs for progress.`)
     } catch (err) {
@@ -247,6 +271,33 @@ export function RestorePage() {
               ) : null}
             </div>
 
+            {selectedBackup ? (
+              <div className="space-y-2">
+                <Label htmlFor="restore-source">Backup source</Label>
+                <select
+                  id="restore-source"
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  value={sourceKey}
+                  onChange={(e) => setSourceKey(e.target.value)}
+                  disabled={selectedSources.length === 0}
+                >
+                  {selectedSources.length === 0 ? (
+                    <option value="">No local or remote copy available</option>
+                  ) : (
+                    selectedSources.map((s) => (
+                      <option key={sourceKeyOf(s)} value={sourceKeyOf(s)}>
+                        {s.label}
+                      </option>
+                    ))
+                  )}
+                </select>
+                <p className="text-xs text-muted-foreground">
+                  Restore pulls the dump from the selected source. Local filesystem appears only when a copy is still on
+                  the server.
+                </p>
+              </div>
+            ) : null}
+
             <div className="space-y-3 rounded-lg border border-border bg-muted/30 p-4">
               <p className="text-xs font-medium text-muted-foreground">Driver options (optional)</p>
               <label className="flex items-center gap-2 text-sm">
@@ -310,4 +361,8 @@ export function RestorePage() {
       </Card>
     </div>
   )
+}
+
+function sourceKeyOf(s: BackupSource): string {
+  return s.kind === 'local' ? 'local' : `storage:${s.id}`
 }

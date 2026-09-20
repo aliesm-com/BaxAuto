@@ -55,7 +55,7 @@ class BackupRecord(models.Model):
     storage_uploads = models.JSONField(
         default=list,
         blank=True,
-        help_text='Per-destination upload results (id, name, kind, ok, remote/error).',
+        help_text='Per-destination upload results (id, name, kind, ok, relative, remote/error).',
     )
     error_message = models.TextField(blank=True, default='')
 
@@ -119,3 +119,37 @@ class RestoreRecord(models.Model):
 
     def __str__(self) -> str:
         return f'Restore {self.pk} (backup {self.backup_id})'
+
+
+class AppSettings(models.Model):
+    """
+    Single-row configuration (pk always 1).
+
+    When ``keep_local_backups`` is False, successful backups that uploaded to at least
+    one remote storage are removed from the API server filesystem.
+    """
+
+    keep_local_backups = models.BooleanField(
+        default=True,
+        help_text=(
+            'If disabled, drop the local copy after a successful upload to remote storage '
+            '(S3/SFTP/FTP). Download and restore then pick a remote (or local if still present).'
+        ),
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'App settings'
+        verbose_name_plural = 'App settings'
+
+    def __str__(self) -> str:
+        return 'App settings'
+
+    def save(self, *args, **kwargs):
+        self.pk = 1
+        super().save(*args, **kwargs)
+
+    @classmethod
+    def load(cls) -> 'AppSettings':
+        obj, _created = cls.objects.get_or_create(pk=1)
+        return obj

@@ -20,6 +20,7 @@ from .serializers import (
     DatabaseConnectionSerializer,
 )
 from .services import perform_backup, probe_saved_connection
+from backups.services import UnlinkingFile
 
 
 class DatabaseConnectionViewSet(viewsets.ModelViewSet):
@@ -114,12 +115,13 @@ class DatabaseConnectionViewSet(viewsets.ModelViewSet):
         req.is_valid(raise_exception=True)
         compress = bool(req.validated_data.get('compress'))
         try:
-            path, filename = perform_backup(conn, initiated_by=request.user, compress=compress)
+            path, filename, purge_local = perform_backup(conn, initiated_by=request.user, compress=compress)
         except BackupRestoreError as e:
             return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
         except ValueError as e:
             return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
-        return FileResponse(path.open('rb'), as_attachment=True, filename=filename)
+        fh = UnlinkingFile(path) if purge_local else path.open('rb')
+        return FileResponse(fh, as_attachment=True, filename=filename)
 
     @extend_schema(responses={200: ConnectionShareReadSerializer(many=True)})
     @action(detail=True, methods=['get', 'post'], url_path='shares')

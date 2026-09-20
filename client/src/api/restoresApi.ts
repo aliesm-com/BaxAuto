@@ -19,6 +19,8 @@ export interface RestoreRequestBody {
   apply_schema?: boolean
   truncate_first?: boolean
   drop?: boolean
+  /** Download from this storage destination before restore; omit for local MEDIA. */
+  storage_id?: number | null
 }
 
 export async function listRestoreRecords(): Promise<RestoreRecordDTO[]> {

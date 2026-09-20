@@ -1,7 +1,9 @@
 import { type FormEvent, useEffect, useState } from 'react'
 
+import { getAppSettings, patchAppSettings } from '@/api/appSettingsApi'
 import { changePassword, patchProfile } from '@/api/profileApi'
 import { useAuth } from '@/auth/AuthContext'
+import { canManageUsers } from '@/auth/access'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -10,6 +12,7 @@ import { Separator } from '@/components/ui/separator'
 
 export function SettingsPage() {
   const { user, refreshUser } = useAuth()
+  const isAdmin = canManageUsers(user)
 
   const [email, setEmail] = useState('')
   const [firstName, setFirstName] = useState('')
@@ -25,6 +28,11 @@ export function SettingsPage() {
   const [passMsg, setPassMsg] = useState<string | null>(null)
   const [passSaving, setPassSaving] = useState(false)
 
+  const [keepLocal, setKeepLocal] = useState(true)
+  const [keepLocalLoaded, setKeepLocalLoaded] = useState(false)
+  const [storageMsg, setStorageMsg] = useState<string | null>(null)
+  const [storageSaving, setStorageSaving] = useState(false)
+
   useEffect(() => {
     if (!user) return
     setEmail(user.email ?? '')
@@ -33,6 +41,17 @@ export function SettingsPage() {
     setPhone(user.phone_number ?? '')
     setCountryCode(user.country_code ?? '')
   }, [user])
+
+  useEffect(() => {
+    getAppSettings()
+      .then((s) => {
+        setKeepLocal(s.keep_local_backups)
+        setKeepLocalLoaded(true)
+      })
+      .catch((err) => {
+        setStorageMsg(err instanceof Error ? err.message : 'Failed to load storage settings')
+      })
+  }, [])
 
   async function onProfileSubmit(e: FormEvent) {
     e.preventDefault()
@@ -77,6 +96,22 @@ export function SettingsPage() {
       setPassMsg(err instanceof Error ? err.message : 'Change failed')
     } finally {
       setPassSaving(false)
+    }
+  }
+
+  async function onStorageSubmit(e: FormEvent) {
+    e.preventDefault()
+    if (!isAdmin) return
+    setStorageMsg(null)
+    setStorageSaving(true)
+    try {
+      const s = await patchAppSettings({ keep_local_backups: keepLocal })
+      setKeepLocal(s.keep_local_backups)
+      setStorageMsg('Storage settings saved.')
+    } catch (err) {
+      setStorageMsg(err instanceof Error ? err.message : 'Save failed')
+    } finally {
+      setStorageSaving(false)
     }
   }
 
@@ -171,6 +206,56 @@ export function SettingsPage() {
             <Button type="submit" disabled={passSaving}>
               {passSaving ? 'Updating…' : 'Change password'}
             </Button>
+          </form>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Backup storage</CardTitle>
+          <CardDescription>
+            When remote destinations (S3/SFTP/FTP) receive a successful upload, you can drop the copy on this server to
+            save disk. Download and restore then pick a remote source (or local if still present).
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={onStorageSubmit} className="space-y-4">
+            {storageMsg ? (
+              <p
+                className={`text-sm ${
+                  storageMsg.toLowerCase().includes('fail') ||
+                  storageMsg.toLowerCase().includes('error') ||
+                  storageMsg.toLowerCase().includes('required')
+                    ? 'text-red-600'
+                    : 'text-emerald-700 dark:text-emerald-400'
+                }`}
+              >
+                {storageMsg}
+              </p>
+            ) : null}
+            <label className="flex items-start gap-3 text-sm">
+              <input
+                type="checkbox"
+                className="mt-0.5 size-4 rounded"
+                checked={keepLocal}
+                disabled={!keepLocalLoaded || !isAdmin}
+                onChange={(e) => setKeepLocal(e.target.checked)}
+              />
+              <span>
+                <span className="font-medium">Keep local backups on this server</span>
+                <span className="mt-0.5 block text-muted-foreground">
+                  Uncheck to delete the local file after at least one remote upload succeeds. If no remote upload
+                  succeeds, the local copy is always kept.
+                </span>
+              </span>
+            </label>
+            {isAdmin ? (
+              <Button type="submit" disabled={storageSaving || !keepLocalLoaded}>
+                {storageSaving ? 'Saving…' : 'Save storage settings'}
+              </Button>
+            ) : (
+              <p className="text-xs text-muted-foreground">Only admins can change this setting.</p>
+            )}
           </form>
         </CardContent>
       </Card>

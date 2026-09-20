@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from rest_framework import serializers
 
-from .models import BackupRecord, RestoreRecord
+from .models import AppSettings, BackupRecord, RestoreRecord
+from .services import local_backup_available
 
 
 class RestoreRecordSerializer(serializers.ModelSerializer):
@@ -33,6 +34,7 @@ class RestoreRecordSerializer(serializers.ModelSerializer):
 class BackupRecordSerializer(serializers.ModelSerializer):
     connection_name = serializers.CharField(source='connection.name', read_only=True)
     restore_logs = RestoreRecordSerializer(many=True, read_only=True)
+    local_available = serializers.SerializerMethodField()
 
     class Meta:
         model = BackupRecord
@@ -50,12 +52,16 @@ class BackupRecordSerializer(serializers.ModelSerializer):
             'size_bytes',
             'compressed',
             'storage_uploads',
+            'local_available',
             'error_message',
             'created_at',
             'finished_at',
             'restore_logs',
         )
         read_only_fields = fields
+
+    def get_local_available(self, obj: BackupRecord) -> bool:
+        return local_backup_available(obj)
 
 
 class RestoreRequestSerializer(serializers.Serializer):
@@ -65,3 +71,15 @@ class RestoreRequestSerializer(serializers.Serializer):
     apply_schema = serializers.BooleanField(required=False)
     truncate_first = serializers.BooleanField(required=False)
     drop = serializers.BooleanField(required=False)
+    storage_id = serializers.IntegerField(
+        required=False,
+        allow_null=True,
+        help_text='Download the artifact from this storage destination before restore. Omit for local MEDIA.',
+    )
+
+
+class AppSettingsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = AppSettings
+        fields = ('keep_local_backups', 'updated_at')
+        read_only_fields = ('updated_at',)

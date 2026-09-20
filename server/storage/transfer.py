@@ -30,6 +30,25 @@ def upload_backup_file(dest: StorageDestination, local_path: Path, remote_relati
     raise StorageTransferError(f'Unsupported storage kind: {dest.kind}')
 
 
+def download_backup_file(dest: StorageDestination, remote_relative: str, local_path: Path) -> Path:
+    """
+    Download ``remote_relative`` from ``dest`` into ``local_path``.
+
+    Parent directories of ``local_path`` are created as needed. Returns ``local_path``.
+    """
+    local_path = Path(local_path)
+    local_path.parent.mkdir(parents=True, exist_ok=True)
+    if dest.kind == dest.Kind.S3:
+        _download_s3(dest, remote_relative, local_path)
+    elif dest.kind == dest.Kind.SFTP:
+        _download_sftp(dest, remote_relative, local_path)
+    elif dest.kind == dest.Kind.FTP:
+        _download_ftp(dest, remote_relative, local_path)
+    else:
+        raise StorageTransferError(f'Unsupported storage kind: {dest.kind}')
+    return local_path
+
+
 def delete_backup_file(dest: StorageDestination, remote_relative: str) -> None:
     """Remove a previously uploaded backup at ``remote_relative`` under ``dest``."""
     if dest.kind == dest.Kind.S3:
@@ -146,6 +165,20 @@ def _delete_s3(dest: StorageDestination, remote_relative: str) -> None:
         raise StorageTransferError(f'S3 delete failed: {e}') from e
 
 
+def _download_s3(dest: StorageDestination, remote_relative: str, local_path: Path) -> None:
+    try:
+        from botocore.exceptions import BotoCoreError, ClientError
+    except ImportError as e:
+        raise StorageTransferError('boto3 is not installed on the API image.') from e
+
+    client, bucket = _s3_client(dest)
+    key = _remote_key(dest, remote_relative)
+    try:
+        client.download_file(bucket, key, str(local_path))
+    except (BotoCoreError, ClientError, OSError) as e:
+        raise StorageTransferError(f'S3 download failed: {e}') from e
+
+
 def _sftp_makedirs(sftp, remote_dir: str) -> None:
     remote_dir = remote_dir.replace('\\', '/').rstrip('/')
     if not remote_dir or remote_dir == '.':
@@ -237,6 +270,40 @@ def _delete_sftp(dest: StorageDestination, remote_relative: str) -> None:
         client.close()
 
 
+def _download_sftp(dest: StorageDestination, remote_relative: str, local_path: Path) -> None:
+    try:
+        import paramiko
+    except ImportError as e:
+        raise StorageTransferError('paramiko is not installed on the API image.') from e
+
+    host = (dest.host or '').strip()
+    user = (dest.username or '').strip()
+    if not host or not user:
+        raise StorageTransferError('Host and username are required for SFTP.')
+    remote = _remote_key(dest, remote_relative)
+    client = paramiko.SSHClient()
+    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    try:
+        client.connect(
+            hostname=host,
+            port=int(dest.port or 22),
+            username=user,
+            password=dest.secret or None,
+            timeout=60,
+            allow_agent=False,
+            look_for_keys=False,
+        )
+        sftp = client.open_sftp()
+        try:
+            sftp.get(remote, str(local_path))
+        finally:
+            sftp.close()
+    except Exception as e:
+        raise StorageTransferError(f'SFTP download failed: {e}') from e
+    finally:
+        client.close()
+
+
 def _ftp_makedirs(ftp: FTP, remote_dir: str) -> None:
     remote_dir = remote_dir.replace('\\', '/').strip('/')
     if not remote_dir:
@@ -310,3 +377,30 @@ def _delete_ftp(dest: StorageDestination, remote_relative: str) -> None:
         ftp.quit()
     except Exception as e:
         raise StorageTransferError(f'FTP delete failed: {e}') from e
+
+
+def _download_ftp(dest: StorageDestination, remote_relative: str, local_path: Path) -> None:
+    host = (dest.host or '').strip()
+    user = (dest.username or '').strip()
+    if not host or not user:
+        raise StorageTransferError('Host and username are required for FTP.')
+    remote = _remote_key(dest, remote_relative)
+    timeout = 1800
+    ftp: FTP
+    try:
+        if dest.ftp_use_tls:
+            ftp = FTP_TLS()
+            ftp.connect(host, int(dest.port or 21), timeout=timeout)
+            ftp.login(user, dest.secret or '')
+            ftp.prot_p()
+        else:
+            ftp = FTP()
+            ftp.connect(host, int(dest.port or 21), timeout=timeout)
+            ftp.login(user, dest.secret or '')
+        if dest.ftp_passive:
+            ftp.set_pasv(True)
+        with local_path.open('wb') as fh:
+            ftp.retrbinary(f'RETR {remote}', fh.write)
+        ftp.quit()
+    except Exception as e:
+        raise StorageTransferError(f'FTP download failed: {e}') from e

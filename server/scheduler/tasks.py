@@ -37,13 +37,18 @@ def backup_saved_connection(
     retention policy (if any).
     """
     conn = DatabaseConnection.objects.get(pk=connection_id, user_id=owner_user_id)
-    path, _name = perform_backup(
+    path, _name, purge_local = perform_backup(
         conn,
         trigger=BackupRecord.Trigger.SCHEDULED,
         compress=bool(compress),
         schedule_job_id=schedule_job_id,
         schedule_job_name=schedule_job_name or '',
     )
+    if purge_local:
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            pass
     if schedule_job_id:
         from scheduler.models import ScheduledJob
 

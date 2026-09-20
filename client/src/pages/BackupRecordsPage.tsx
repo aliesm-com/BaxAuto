@@ -8,6 +8,16 @@ import { cancelInProgressBackup, listBackupRecords } from '@/api/resources'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Label } from '@/components/ui/label'
+import { type BackupSource, backupSources, downloadPathForSource } from '@/lib/backupSources'
 import { downloadAuthenticated } from '@/lib/download'
 import { formatDateTime } from '@/lib/datetime'
 
@@ -15,6 +25,9 @@ export function BackupRecordsPage() {
   const [rows, setRows] = useState<BackupRecord[]>([])
   const [error, setError] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<number | null>(null)
+  const [downloadBackup, setDownloadBackup] = useState<BackupRecord | null>(null)
+  const [downloadSourceKey, setDownloadSourceKey] = useState('')
+  const [downloading, setDownloading] = useState(false)
 
   const refresh = useCallback(() => {
     listBackupRecords()
@@ -46,7 +59,38 @@ export function BackupRecordsPage() {
     }
   }
 
+  function openDownload(b: BackupRecord) {
+    const sources = backupSources(b)
+    if (sources.length === 0) {
+      setError(`Backup #${b.id} has no downloadable copy (local or remote).`)
+      return
+    }
+    if (sources.length === 1) {
+      void runDownload(b, sources[0])
+      return
+    }
+    setDownloadBackup(b)
+    setDownloadSourceKey(sourceKey(sources[0]))
+  }
+
+  async function runDownload(b: BackupRecord, source: BackupSource) {
+    setDownloading(true)
+    setError(null)
+    try {
+      await downloadAuthenticated(
+        downloadPathForSource(b.id, source),
+        b.download_filename || `backup-${b.id}`,
+      )
+      setDownloadBackup(null)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Download failed')
+    } finally {
+      setDownloading(false)
+    }
+  }
+
   const inProgressCount = rows.filter((b) => b.status === 'in_progress').length
+  const pickerSources = downloadBackup ? backupSources(downloadBackup) : []
 
   return (
     <div className="space-y-6 p-6 lg:p-8">
@@ -92,6 +136,11 @@ export function BackupRecordsPage() {
                       {b.compressed ? (
                         <Badge variant="secondary" title={b.download_filename || 'gzip'}>
                           gzip
+                        </Badge>
+                      ) : null}
+                      {b.status === 'success' && !b.local_available ? (
+                        <Badge variant="outline" title="Not kept on the API server filesystem">
+                          remote only
                         </Badge>
                       ) : null}
                     </div>
@@ -140,14 +189,9 @@ export function BackupRecordsPage() {
                             size="icon"
                             className="size-8"
                             type="button"
-                            onClick={() =>
-                              downloadAuthenticated(
-                                `/api/backup-records/${b.id}/download/`,
-                                b.download_filename || `backup-${b.id}`,
-                              ).catch(() => {
-                                /* ignore */
-                              })
-                            }
+                            title="Download"
+                            disabled={downloading}
+                            onClick={() => openDownload(b)}
                           >
                             <Download className="size-4" />
                             <span className="sr-only">Download</span>
@@ -165,6 +209,53 @@ export function BackupRecordsPage() {
           ) : null}
         </CardContent>
       </Card>
+
+      <Dialog open={downloadBackup != null} onOpenChange={(open) => !open && setDownloadBackup(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Download backup #{downloadBackup?.id}</DialogTitle>
+            <DialogDescription>
+              Choose where to fetch the file from. Local filesystem appears only when a copy is still on the server.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="dl-source">Source</Label>
+            <select
+              id="dl-source"
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              value={downloadSourceKey}
+              onChange={(e) => setDownloadSourceKey(e.target.value)}
+            >
+              {pickerSources.map((s) => (
+                <option key={sourceKey(s)} value={sourceKey(s)}>
+                  {s.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setDownloadBackup(null)}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              disabled={downloading || !downloadBackup || !downloadSourceKey}
+              onClick={() => {
+                if (!downloadBackup) return
+                const source = pickerSources.find((s) => sourceKey(s) === downloadSourceKey)
+                if (!source) return
+                void runDownload(downloadBackup, source)
+              }}
+            >
+              {downloading ? 'Downloading…' : 'Download'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
+}
+
+function sourceKey(s: BackupSource): string {
+  return s.kind === 'local' ? 'local' : `storage:${s.id}`
 }

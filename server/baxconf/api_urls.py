@@ -3,7 +3,7 @@
 from django.urls import include, path
 from rest_framework.routers import SimpleRouter
 
-from backups.views import BackupRecordViewSet, RestoreRecordViewSet
+from backups.views import AppSettingsView, BackupRecordViewSet, RestoreRecordViewSet
 from db_connections.views import DatabaseConnectionViewSet
 from overview.views import OverviewView
 from scheduler.views import ScheduledJobViewSet
@@ -18,5 +18,6 @@ router.register('storage-destinations', StorageDestinationViewSet, basename='sto
 
 urlpatterns = [
     path('overview/', OverviewView.as_view(), name='overview'),
+    path('app-settings/', AppSettingsView.as_view(), name='app-settings'),
     path('', include(router.urls)),
 ]

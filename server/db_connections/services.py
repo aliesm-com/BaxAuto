@@ -138,7 +138,7 @@ def perform_backup(
     compress: bool = False,
     schedule_job_id: int | None = None,
     schedule_job_name: str = '',
-) -> tuple[Path, str]:
+) -> tuple[Path, str, bool]:
     """
     Run logical backup for this saved connection.
 
@@ -154,6 +154,10 @@ def perform_backup(
     Logs a :class:`backups.models.BackupRecord` row (success or failure).
 
     ``trigger`` defaults to manual API when omitted.
+
+    Returns ``(path, filename, purge_local)``. When ``purge_local`` is True the caller
+    should delete ``path`` after it is done reading it (setting: do not keep local copies
+    after a successful remote upload).
     """
     if trigger is None:
         trigger = BackupRecord.Trigger.MANUAL
@@ -266,7 +270,12 @@ def perform_backup(
                 connection_id=connection.pk,
                 backup_id=record.pk,
             )
-        return path, filename
+
+        # Drop local after callers finish with the path (manual download streams it first).
+        from backups.models import AppSettings
+
+        purge_local = ok_uploads > 0 and not AppSettings.load().keep_local_backups
+        return path, filename, purge_local
     except Exception as e:
         record = BackupRecord.objects.get(pk=record_id)
         record.status = BackupRecord.Status.FAILED

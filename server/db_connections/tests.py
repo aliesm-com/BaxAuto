@@ -202,7 +202,7 @@ class BackupRestoreLogTests(TestCase):
             with override_settings(MEDIA_ROOT=tmp):
                 with patch('db_connections.services.dbs_backup', side_effect=fake_backup):
                     with patch('db_connections.services.upload_backup_file', side_effect=fake_upload):
-                        path, filename = perform_backup(self.conn, initiated_by=self.user, compress=True)
+                        path, filename = perform_backup(self.conn, initiated_by=self.user, compress=True)[:2]
 
             self.assertTrue(filename.endswith('.gz'))
             self.assertTrue(path.is_file())

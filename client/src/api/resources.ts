@@ -9,6 +9,7 @@ export interface BackupStorageUpload {
   kind: string
   ok: boolean
   remote?: string
+  relative?: string
   error?: string
 }
 
@@ -25,6 +26,8 @@ export interface BackupRecord {
   size_bytes: number | null
   compressed: boolean
   storage_uploads: BackupStorageUpload[]
+  /** True when the artifact still exists under MEDIA on the API server. */
+  local_available: boolean
   error_message: string
   created_at: string
   finished_at: string | null
