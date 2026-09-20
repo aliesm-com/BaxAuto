@@ -4,7 +4,7 @@ from django.contrib.auth import get_user_model
 from django.shortcuts import get_object_or_404
 from drf_spectacular.utils import extend_schema
 from rest_framework import status, viewsets
-from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -13,6 +13,7 @@ from rest_framework_simplejwt.views import TokenObtainPairView
 
 from baxconf.alertlog import log_alert, log_http_alert
 
+from .ownership import transfer_and_delete_users
 from .permissions import IsAppAdmin, IsSuperuser
 from .serializers import (
     AdminUserSerializer,
@@ -161,17 +162,32 @@ class AdminUserViewSet(viewsets.ModelViewSet):
             user_id=user.pk,
         )
 
-    def perform_destroy(self, instance):
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
         if instance.is_superuser:
             raise PermissionDenied('Superuser accounts cannot be deleted from this API.')
+
+        transfer_to_id = request.data.get('transfer_to') or request.query_params.get('transfer_to')
+        if not transfer_to_id:
+            raise ValidationError(
+                {'transfer_to': 'Required so owned data is reassigned before delete.'}
+            )
+        try:
+            transfer_to = User.objects.get(pk=transfer_to_id, is_active=True)
+        except (User.DoesNotExist, TypeError, ValueError) as exc:
+            raise ValidationError({'transfer_to': 'Must be an active user id.'}) from exc
+        if transfer_to.pk == instance.pk:
+            raise ValidationError({'transfer_to': 'Cannot be the user being deleted.'})
+
         username, pk = instance.username, instance.pk
-        super().perform_destroy(instance)
+        transfer_and_delete_users([instance], transfer_to)
         log_alert(
-            f'User “{username}” deleted.',
+            f'User “{username}” deleted; data transferred to “{transfer_to.username}”.',
             status='success',
             source='user',
             user_id=pk,
         )
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     def perform_update(self, serializer):
         if serializer.instance.is_superuser:
