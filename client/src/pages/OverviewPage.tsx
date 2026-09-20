@@ -227,7 +227,7 @@ export function OverviewPage() {
           <Card className="xl:col-span-3">
             <CardHeader>
               <CardTitle>Backup Activity</CardTitle>
-              <CardDescription>Successful backups per day (last 7 days, server timezone)</CardDescription>
+              <CardDescription>Successful backups per day (last 7 days, Asia/Tehran)</CardDescription>
             </CardHeader>
             <CardContent className="pl-0">
               <div className="h-[280px] w-full">

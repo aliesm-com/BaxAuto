@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { downloadAuthenticated } from '@/lib/download'
+import { formatDateTime } from '@/lib/datetime'
 
 export function BackupRecordsPage() {
   const [rows, setRows] = useState<BackupRecord[]>([])
@@ -73,7 +74,7 @@ export function BackupRecordsPage() {
                       return `${ok}/${uploads.length}`
                     })()}
                   </td>
-                  <td className="py-3 pr-4 text-muted-foreground">{b.finished_at ?? '—'}</td>
+                  <td className="py-3 pr-4 text-muted-foreground">{formatDateTime(b.finished_at)}</td>
                   <td className="py-3 text-right">
                     <div className="flex justify-end gap-1">
                       <Button variant="ghost" size="icon" className="size-8" asChild>

@@ -10,6 +10,7 @@ import { ScheduleFormModal } from '@/components/schedules/ScheduleFormModal'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { formatDateTime } from '@/lib/datetime'
 
 export function SchedulesPage() {
   const { user } = useAuth()
@@ -156,7 +157,7 @@ export function SchedulesPage() {
                   <td className="py-3 pr-4">
                     <Badge variant={j.enabled ? 'success' : 'muted'}>{j.enabled ? 'Yes' : 'No'}</Badge>
                   </td>
-                  <td className="py-3 pr-4 text-muted-foreground">{j.next_run ?? '—'}</td>
+                  <td className="py-3 pr-4 text-muted-foreground">{formatDateTime(j.next_run)}</td>
                   <td className="py-3 text-right">
                     <div className="flex justify-end gap-1">
                       <Button variant="ghost" size="icon" className="size-8" asChild>

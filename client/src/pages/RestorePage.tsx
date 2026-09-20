@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { formatDateTime } from '@/lib/datetime'
 
 export function RestorePage() {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -231,7 +232,7 @@ export function RestorePage() {
                 <option value="">Select backup…</option>
                 {selectOptions.map((b) => (
                   <option key={b.id} value={b.id}>
-                    #{b.id} · {b.connection_name} · {b.engine} · {b.finished_at ?? b.created_at}
+                    #{b.id} · {b.connection_name} · {b.engine} · {formatDateTime(b.finished_at ?? b.created_at)}
                   </option>
                 ))}
               </select>

@@ -170,7 +170,7 @@ def perform_backup(
     )
     export_root = Path(settings.MEDIA_ROOT) / 'db_exports' / str(connection.user_id) / db_slug / run_subdir
     export_root.mkdir(parents=True, exist_ok=True)
-    stamp = timezone.now().strftime('%Y%m%d_%H%M%S')
+    stamp = timezone.localtime().strftime('%Y%m%d_%H%M%S')
     file_slug = db_slug
 
     record = BackupRecord.objects.create(

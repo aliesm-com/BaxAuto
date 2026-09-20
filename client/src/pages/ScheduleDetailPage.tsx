@@ -16,6 +16,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
+import { formatDateTime } from '@/lib/datetime'
 
 function scheduleSummary(j: ScheduledJobDTO): string {
   if (j.schedule_kind === 'interval') {
@@ -183,11 +184,11 @@ export function ScheduleDetailPage() {
             </div>
             <div>
               <dt className="text-muted-foreground">Next run</dt>
-              <dd>{row.next_run ?? '—'}</dd>
+              <dd>{formatDateTime(row.next_run)}</dd>
             </div>
             <div>
               <dt className="text-muted-foreground">Last run</dt>
-              <dd>{row.last_run ?? '—'}</dd>
+              <dd>{formatDateTime(row.last_run)}</dd>
             </div>
             <div>
               <dt className="text-muted-foreground">Last status</dt>

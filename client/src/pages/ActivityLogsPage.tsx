@@ -10,6 +10,7 @@ import { listRestoreRecords } from '@/api/restoresApi'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { formatDateTime } from '@/lib/datetime'
 
 type LogKind = 'backup' | 'restore'
 
@@ -109,7 +110,7 @@ export function ActivityLogsPage() {
                     </Badge>
                   </td>
                   <td className="py-3 pr-4 text-muted-foreground">{r.actor}</td>
-                  <td className="py-3 pr-4 text-muted-foreground">{r.created_at}</td>
+                  <td className="py-3 pr-4 text-muted-foreground">{formatDateTime(r.created_at)}</td>
                   <td className="max-w-[200px] truncate py-3 pr-4 text-xs text-muted-foreground" title={r.note}>
                     {r.note.length > 80 ? `${r.note.slice(0, 80)}…` : r.note}
                   </td>

@@ -4,7 +4,7 @@ Django settings for baxconf project.
 Environment variables (optional `.env` next to `manage.py`):
   SECRET_KEY, DEBUG, ALLOWED_HOSTS (comma-separated),
   DATABASE_URL (PostgreSQL recommended for production; omit for local SQLite),
-  TIME_ZONE (defaults to UTC),
+  TIME_ZONE (defaults to Asia/Tehran),
   CORS_ALLOWED_ORIGINS (comma-separated),
   CSRF_TRUSTED_ORIGINS (comma-separated),
   DB_CREDENTIALS_FERNET_KEY (optional Fernet key for encrypted DB connection passwords).
@@ -169,7 +169,7 @@ AUTH_PASSWORD_VALIDATORS = [
 
 LANGUAGE_CODE = 'en-us'
 
-TIME_ZONE = env.str('TIME_ZONE', default='UTC')
+TIME_ZONE = env.str('TIME_ZONE', default='Asia/Tehran')
 
 USE_I18N = True
 
