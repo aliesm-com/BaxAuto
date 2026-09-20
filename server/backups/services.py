@@ -247,6 +247,7 @@ def perform_restore(
             f'Restore of backup #{backup.pk} onto “{connection.name}” failed: {rr.error_message}',
             status='error',
             source='restore',
+            error=(rr.error_message or 'restore failed')[:255],
             connection_id=connection.pk,
             restore_id=rr.pk,
             backup_id=backup.pk,

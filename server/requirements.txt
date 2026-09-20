@@ -14,3 +14,4 @@ rdbtools>=0.1.14
 croniter>=2.0.0
 boto3>=1.35.0
 paramiko>=3.4.0
+requests>=2.32.0

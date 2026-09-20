@@ -267,6 +267,7 @@ def perform_backup(
                 f'Backup of “{connection.name}” could not be copied to: {names}.',
                 status='warning',
                 source='backup',
+                error='storage upload failed',
                 connection_id=connection.pk,
                 backup_id=record.pk,
             )
@@ -289,6 +290,7 @@ def perform_backup(
             f'{kind} of “{connection.name}” failed: {record.error_message}',
             status='error',
             source='backup',
+            error=(record.error_message or 'backup failed')[:255],
             connection_id=connection.pk,
             backup_id=record_id,
         )

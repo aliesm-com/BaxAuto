@@ -68,8 +68,11 @@ export function AppTopBar() {
         </kbd>
       </div>
       <div className="flex items-center gap-1">
-        <Button variant="ghost" size="icon" className="text-muted-foreground" type="button">
-          <Bell className="size-5" />
+        <Button variant="ghost" size="icon" className="text-muted-foreground" asChild>
+          <Link to="/alerts" title="Alerts">
+            <Bell className="size-5" />
+            <span className="sr-only">Alerts</span>
+          </Link>
         </Button>
         <Button
           variant="ghost"

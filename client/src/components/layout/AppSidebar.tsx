@@ -38,7 +38,7 @@ const mainNav: NavDef[] = [
   { to: '/databases', label: 'Databases', icon: Database, access: 'auth' },
   { to: '/schedules', label: 'Schedules', icon: CalendarClock, access: 'auth' },
   { to: '/storage', label: 'Storage', icon: Boxes, access: 'auth' },
-  { to: '/alerts', label: 'Alerts', icon: ShieldAlert, access: 'soon' },
+  { to: '/alerts', label: 'Alerts', icon: ShieldAlert, access: 'auth' },
 ]
 
 const advancedNav: NavDef[] = [

@@ -121,6 +121,39 @@ class RestoreRecord(models.Model):
         return f'Restore {self.pk} (backup {self.backup_id})'
 
 
+class AlertEvent(models.Model):
+    """Persisted operator alert (errors/warnings) for the dashboard and webhook."""
+
+    class Status(models.TextChoices):
+        SUCCESS = 'success', 'Success'
+        WARNING = 'warning', 'Warning'
+        ERROR = 'error', 'Error'
+
+    status = models.CharField(max_length=16, choices=Status.choices)
+    source = models.CharField(max_length=64, blank=True, default='')
+    error = models.CharField(max_length=255, blank=True, default='')
+    description = models.TextField()
+    context = models.JSONField(blank=True, default=dict)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['-created_at', 'status'], name='backups_ale_created_idx'),
+        ]
+
+    def __str__(self) -> str:
+        return f'{self.status}: {self.error or self.source or self.pk}'
+
+    @property
+    def webhook_status(self) -> str:
+        if self.status == self.Status.WARNING:
+            return 'degraded'
+        if self.status == self.Status.SUCCESS:
+            return 'up'
+        return 'down'
+
+
 class AppSettings(models.Model):
     """
     Single-row configuration (pk always 1).

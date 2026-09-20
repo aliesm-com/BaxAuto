@@ -18,8 +18,9 @@ from dbs.base import BackupRestoreError
 from storage.models import StorageDestination
 from storage.transfer import StorageTransferError, download_backup_file
 
-from .models import AppSettings, BackupRecord, RestoreRecord
+from .models import AlertEvent, AppSettings, BackupRecord, RestoreRecord
 from .serializers import (
+    AlertEventSerializer,
     AppSettingsSerializer,
     BackupRecordSerializer,
     RestoreRecordSerializer,
@@ -241,6 +242,26 @@ class BackupRecordViewSet(viewsets.ReadOnlyModelViewSet):
         except BackupRestoreError as e:
             return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(RestoreRecordSerializer(rr).data, status=status.HTTP_201_CREATED)
+
+
+class AlertEventViewSet(viewsets.ReadOnlyModelViewSet):
+    """Recent operator alerts (errors and warnings)."""
+
+    serializer_class = AlertEventSerializer
+    permission_classes = [IsAuthenticated]
+    pagination_class = None
+
+    def get_queryset(self):
+        qs = AlertEvent.objects.filter(status__in=[AlertEvent.Status.ERROR, AlertEvent.Status.WARNING])
+        source = (self.request.query_params.get('source') or '').strip()
+        if source:
+            qs = qs.filter(source=source)
+        return qs
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.filter_queryset(self.get_queryset())[:100]
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
 
 
 class RestoreRecordViewSet(viewsets.ReadOnlyModelViewSet):
