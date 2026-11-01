@@ -74,7 +74,7 @@ From the repository root:
    | [http://localhost:18200](http://localhost:18200) | BaxAuto API directly |
    | [http://localhost:18280/admin/](http://localhost:18280/admin/) | Django admin (also on API port 18200) |
 
-The API container runs migrations on start, then `runserver` (Gunicorn in `--profile prod`). Compose also starts **BaxAuto Postgres** for the app catalog. The API image ships **PostgreSQL/MySQL clients**, **Redis CLI**, **MongoDB tools**, **SQL Server ODBC + sqlcmd + SqlPackage**, and more — so backup commands work without installing toolchains on your laptop.
+The API container runs migrations on start, then `runserver` (Gunicorn in `--profile prod`). Compose also starts **BaxAuto Postgres** for the app catalog. The API image ships **PostgreSQL/MySQL clients**, **Redis CLI**, **MongoDB tools**, and (when `packages.microsoft.com` is reachable) **SQL Server ODBC + sqlcmd + SqlPackage** — so backup commands work without installing toolchains on your laptop. If Microsoft’s CDN is blocked, the image still builds; pass `--build-arg INSTALL_MSSQL_TOOLS=0 --build-arg INSTALL_SQLPACKAGE=0` to skip those layers explicitly.
 
 ---
 

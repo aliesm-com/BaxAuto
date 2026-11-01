@@ -10,7 +10,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# PostgreSQL (PGDG client ≥ server), MySQL, Redis CLI, Microsoft ODBC + sqlcmd, unzip/libicu for SqlPackage.
+# PostgreSQL (PGDG client ≥ server), MySQL, Redis CLI. (SQL Server tools are a separate optional layer.)
 # Must be ≥ the newest Postgres you dump (pg_dump cannot target a newer major than itself).
 # 18 is current stable; still dumps 17/16/…. Bump when you need to dump a newer major.
 ARG PG_CLIENT_MAJOR=18
@@ -28,34 +28,55 @@ RUN apt-get update \
        | gpg --dearmor -o /usr/share/keyrings/postgresql.gpg \
     && echo "deb [signed-by=/usr/share/keyrings/postgresql.gpg] http://apt.postgresql.org/pub/repos/apt bookworm-pgdg main" \
        > /etc/apt/sources.list.d/pgdg.list \
-    && curl -fsSL https://packages.microsoft.com/keys/microsoft.asc \
-       | gpg --dearmor -o /usr/share/keyrings/microsoft-prod.gpg \
-    && curl -fsSL https://packages.microsoft.com/config/debian/12/prod.list \
-       > /etc/apt/sources.list.d/microsoft-prod.list \
     && apt-get update \
     && apt-get install -y --no-install-recommends "postgresql-client-${PG_CLIENT_MAJOR}" \
-    && ACCEPT_EULA=Y apt-get install -y --no-install-recommends \
-       msodbcsql18 \
-       mssql-tools18 \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && pg_dump --version
 
 ENV PATH="${PATH}:/opt/mssql-tools18/bin"
 
-# Microsoft SqlPackage (.bacpac export/import for SQL Server).
-# Official Linux zip is x64; skip on arm64 so Apple Silicon images still build.
-ARG SQLPACKAGE_URL=https://aka.ms/sqlpackage-linux
+# Microsoft ODBC + sqlcmd (SQL Server). Optional: packages.microsoft.com is often blocked.
+# Set INSTALL_MSSQL_TOOLS=0 to skip. Default tries once and continues if unreachable.
+ARG INSTALL_MSSQL_TOOLS=1
 RUN set -eux \
+    && if [ "$INSTALL_MSSQL_TOOLS" = "0" ]; then \
+         echo "Skipping Microsoft SQL Server tools (INSTALL_MSSQL_TOOLS=0)"; \
+         exit 0; \
+       fi \
+    && if ! curl -fsSL --connect-timeout 15 --max-time 60 \
+          https://packages.microsoft.com/keys/microsoft.asc \
+          | gpg --dearmor -o /usr/share/keyrings/microsoft-prod.gpg; then \
+         echo "WARNING: cannot reach packages.microsoft.com — SQL Server ODBC/sqlcmd not installed"; \
+         exit 0; \
+       fi \
+    && curl -fsSL https://packages.microsoft.com/config/debian/12/prod.list \
+       > /etc/apt/sources.list.d/microsoft-prod.list \
+    && apt-get update \
+    && ACCEPT_EULA=Y apt-get install -y --no-install-recommends msodbcsql18 mssql-tools18 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Microsoft SqlPackage (.bacpac). x64-only; skipped when Microsoft CDN is unreachable or arch≠amd64.
+ARG SQLPACKAGE_URL=https://aka.ms/sqlpackage-linux
+ARG INSTALL_SQLPACKAGE=1
+RUN set -eux \
+    && if [ "$INSTALL_SQLPACKAGE" = "0" ]; then \
+         echo "Skipping SqlPackage (INSTALL_SQLPACKAGE=0)"; \
+         exit 0; \
+       fi \
     && ARCH="$(dpkg --print-architecture)" \
     && case "$ARCH" in \
          amd64) \
-           curl -fSL "$SQLPACKAGE_URL" -o /tmp/sp.zip \
-           && unzip -q /tmp/sp.zip -d /opt/sqlpackage-root \
-           && SP_BIN="$(find /opt/sqlpackage-root -type f -name sqlpackage | head -1)" \
-           && test -n "$SP_BIN" \
-           && chmod +x "$SP_BIN" \
-           && ln -sf "$SP_BIN" /usr/local/bin/sqlpackage \
-           && rm /tmp/sp.zip \
-           && sqlpackage /version \
+           if curl -fSL --connect-timeout 15 --max-time 120 "$SQLPACKAGE_URL" -o /tmp/sp.zip; then \
+             unzip -q /tmp/sp.zip -d /opt/sqlpackage-root \
+             && SP_BIN="$(find /opt/sqlpackage-root -type f -name sqlpackage | head -1)" \
+             && test -n "$SP_BIN" \
+             && chmod +x "$SP_BIN" \
+             && ln -sf "$SP_BIN" /usr/local/bin/sqlpackage \
+             && rm /tmp/sp.zip \
+             && sqlpackage /version; \
+           else \
+             echo "WARNING: SqlPackage download failed — .bacpac SQL Server backup/restore unavailable"; \
+           fi \
            ;; \
          *) echo "SqlPackage Linux zip is x64-only; skipping on $ARCH" ;; \
        esac
