@@ -189,6 +189,14 @@ To browse **Swagger UI** or **Redoc** in the browser, wire Spectacular’s views
 
 ---
 
+## Docs
+
+| Guide | Topic |
+|-------|--------|
+| [`docs/ssh-tunnel-setup.md`](docs/ssh-tunnel-setup.md) | SSH tunnel, key install, host fingerprint, Test connection |
+
+---
+
 ## Contributing & license
 
 Issues and PRs are welcome. Please keep changes focused and consistent with existing patterns.

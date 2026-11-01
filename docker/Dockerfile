@@ -11,7 +11,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 # PostgreSQL (PGDG client ≥ server), MySQL, Redis CLI, Microsoft ODBC + sqlcmd, unzip/libicu for SqlPackage.
-ARG PG_CLIENT_MAJOR=16
+# Must be ≥ the newest Postgres you dump (pg_dump cannot target a newer major than itself).
+# 18 is current stable; still dumps 17/16/…. Bump when you need to dump a newer major.
+ARG PG_CLIENT_MAJOR=18
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
        curl \
